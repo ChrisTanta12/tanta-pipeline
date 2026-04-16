@@ -129,6 +129,9 @@ export default function Dashboard() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [lastUpdated, setLastUpdated] = useState('');
+  const [dataIsStale, setDataIsStale] = useState(false);
+  const [lastSuccessfulUpdate, setLastSuccessfulUpdate] = useState('');
+  const [autoRefreshInterval, setAutoRefreshInterval] = useState(5); // minutes
 
   // Filters
   const [filterPipeline, setFilterPipeline] = useState('all');
@@ -144,10 +147,9 @@ export default function Dashboard() {
   // Search
   const [searchText, setSearchText] = useState('');
 
-  // Fetch data
+  // Fetch data with client-side cache fallback
   const fetchData = useCallback(async () => {
     setLoading(true);
-    setError('');
     const all: Opportunity[] = [];
     let page = 1;
     try {
@@ -160,13 +162,33 @@ export default function Dashboard() {
         if (all.length >= (data.totalRecords || Infinity)) break;
         page++;
       }
+      // Success — update data and clear stale flag
       setAllOpps(all);
-      setLastUpdated(new Date().toLocaleTimeString());
+      const now = new Date();
+      const timeStr = now.toLocaleTimeString('en-NZ', { hour: '2-digit', minute: '2-digit' });
+      const dateStr = now.toLocaleDateString('en-NZ', { day: 'numeric', month: 'short' });
+      setLastUpdated(`${timeStr}, ${dateStr}`);
+      setLastSuccessfulUpdate(`${timeStr}, ${dateStr}`);
+      setError('');
+      setDataIsStale(false);
     } catch (err: any) {
-      setError(err.message || 'Failed to load data');
+      const errMsg = err.message || 'Failed to load data';
+      setError(errMsg);
+      // If we already have data, mark it as stale but keep showing it
+      if (allOpps.length > 0) {
+        setDataIsStale(true);
+      }
     }
     setLoading(false);
-  }, []);
+  }, [allOpps.length]);
+
+  // Auto-refresh on interval
+  useEffect(() => {
+    const interval = setInterval(() => {
+      fetchData();
+    }, autoRefreshInterval * 60 * 1000);
+    return () => clearInterval(interval);
+  }, [fetchData, autoRefreshInterval]);
 
   useEffect(() => { fetchData(); }, [fetchData]);
 
@@ -365,18 +387,38 @@ export default function Dashboard() {
             <div className="flex items-center gap-3 border-l border-outline-variant pl-6">
               <div className="text-right">
                 <p className="text-sm font-bold text-on-surface">Tanta</p>
-                <p className="text-xs text-on-surface-variant">{lastUpdated ? `Updated ${lastUpdated}` : 'Connecting...'}</p>
+                <p className="text-xs text-on-surface-variant">
+                  {loading ? 'Refreshing...' : lastUpdated ? `Updated ${lastUpdated}` : 'Connecting...'}
+                </p>
               </div>
-              <button onClick={fetchData} className="w-10 h-10 rounded-full bg-primary flex items-center justify-center text-white font-bold text-sm">T</button>
+              <button onClick={fetchData} disabled={loading} className={`w-10 h-10 rounded-full flex items-center justify-center text-white font-bold text-sm transition-all ${dataIsStale ? 'bg-[#EAB308]' : 'bg-primary'} ${loading ? 'animate-pulse' : ''}`} title="Refresh data">
+                <span className="material-symbols-outlined text-lg">refresh</span>
+              </button>
             </div>
           </div>
         </header>
 
-        {/* Error */}
-        {error && (
+        {/* Stale data banner */}
+        {dataIsStale && (
+          <div className="mx-8 mt-4 p-3 bg-[#FFF3CD] text-[#856404] rounded-xl text-sm flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <span className="material-symbols-outlined text-lg">schedule</span>
+              <span>Showing cached data from <strong>{lastSuccessfulUpdate}</strong> — live connection unavailable. Will retry automatically.</span>
+            </div>
+            <button onClick={fetchData} className="px-3 py-1 bg-[#856404]/10 rounded-lg text-xs font-bold hover:bg-[#856404]/20 transition-colors">
+              Retry Now
+            </button>
+          </div>
+        )}
+
+        {/* Error - only show if we have no data at all */}
+        {error && allOpps.length === 0 && (
           <div className="mx-8 mt-4 p-4 bg-error-container text-on-error-container rounded-xl text-sm">
             <strong>Connection Error:</strong> {error}
             <p className="text-xs mt-1">Check TRAIL_API_KEY in Vercel environment variables and IP whitelisting in Trail.</p>
+            <button onClick={fetchData} className="mt-2 px-4 py-1.5 bg-on-error-container/10 rounded-lg text-xs font-bold hover:bg-on-error-container/20 transition-colors">
+              Retry Connection
+            </button>
           </div>
         )}
 
@@ -668,9 +710,10 @@ export default function Dashboard() {
               <span className="text-sm font-bold">{fmtBigCurrency(metrics.ytdCommission)}</span>
             </div>
           </div>
-          <div className="flex items-center gap-1.5 bg-white/10 px-3 py-1 rounded-full">
-            <div className="w-2 h-2 rounded-full bg-green-400 animate-pulse" />
-            <span className="text-[10px] font-bold">LIVE</span>
+          <div className={`flex items-center gap-1.5 px-3 py-1 rounded-full ${dataIsStale ? 'bg-yellow-500/20' : 'bg-white/10'}`}>
+            <div className={`w-2 h-2 rounded-full ${dataIsStale ? 'bg-yellow-400' : 'bg-green-400 animate-pulse'}`} />
+            <span className="text-[10px] font-bold">{dataIsStale ? 'CACHED' : 'LIVE'}</span>
+            {lastSuccessfulUpdate && <span className="text-[9px] text-white/50 ml-1">{lastSuccessfulUpdate}</span>}
           </div>
         </footer>
       </main>
