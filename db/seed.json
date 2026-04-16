@@ -1,0 +1,162 @@
+{
+  "asb": {
+    "name": "ASB",
+    "resourcesFolderUrl": "",
+    "rateCard": {
+      "6mo":  { "lte80": 4.49, "gt80": 4.49 },
+      "1y":   { "lte80": 4.49, "gt80": 4.59 },
+      "18mo": { "lte80": 4.69, "gt80": 4.85 },
+      "2y":   { "lte80": 4.89, "gt80": 5.09 },
+      "3y":   { "lte80": 5.29, "gt80": 5.39 },
+      "4y":   { "lte80": 5.49, "gt80": 5.55 },
+      "5y":   { "lte80": 5.65, "gt80": 5.69 },
+      "floating": { "lte80": 5.09, "gt80": 5.79 }
+    },
+    "trafficLights": {
+      "lte80":   { "existing": "Pre-approvals", "new": "Pre-approval & Live" },
+      "80_90":   { "existing": "Live only",      "new": "Live only" }
+    },
+    "turnaround": { "retail": 4, "business": 3 },
+    "cashback":   { "pctLte80": 0.009, "max80_85": 0, "fhb": 5000 },
+    "lep":        { "80_85": 0.003, "85_90": 0.0075, "90_95": null },
+    "fees":       { "application": "Up to $400", "nurRra": "$0/Variable" },
+    "lowEquityUmi": { "80": "$200", "80_85": "$500", "85_90": "$500", "90_95": "N/A" },
+    "serviceRate": 7.00,
+    "bdm": { "name": "Kristy Laugalis", "phone": "027 528 3041", "email": "kristy.laugalis@asb.co.nz" },
+    "commission": { "upfront": 0.0085, "trail": null, "rc": "0.85% or tiered", "refix": 150 },
+    "boarderIncome": { "lte80": "2 Boarders $240 per person", "gt80": "1 Boarder $240 per person" },
+    "productFeatures": {
+      "offset": "No", "offsetAccounts": "N/A", "weeklyIncrease": "$500/fn max",
+      "lumpSumNoFees": "No", "bizAddback": "Yes", "revCr": "Yes", "revCrLimit": "$500k",
+      "multiHousehold": "Yes", "fundsAvailability": "High", "minRepaymentFreq": "Fortnightly",
+      "kiwiOwned": "No", "kaingaOraFhl": "Yes", "availableLimitsRedraw": "No", "brokerAccess": "No"
+    }
+  },
+  "bnz": {
+    "name": "BNZ",
+    "resourcesFolderUrl": "",
+    "rateCard": {
+      "6mo":  { "lte80": 4.45, "gt80": 4.49 },
+      "1y":   { "lte80": 4.49, "gt80": 4.59 },
+      "18mo": { "lte80": 4.69, "gt80": 4.79 },
+      "2y":   { "lte80": 4.85, "gt80": 4.89 },
+      "3y":   { "lte80": 5.19, "gt80": 5.29 }
+    },
+    "trafficLights": {
+      "lte80":   { "existing": "Pre-approval & live", "new": "Live only" },
+      "80_90":   { "existing": "Live only",           "new": "Live only" }
+    },
+    "turnaround": { "retail": 7, "business": 9 },
+    "cashback":   { "pctLte80": 0.009, "max80_85": 0, "fhb": 5000 },
+    "lep":        { "80_85": 0.0035, "85_90": 0.0075, "90_95": null },
+    "fees":       { "application": "Up to $150", "nurRra": "$25" },
+    "lowEquityUmi": { "80": "105", "80_85": "105", "85_90": "105", "90_95": "N/A" },
+    "serviceRate": 6.85,
+    "bdm": { "name": "Alyse Davidson", "phone": "021 826803", "email": "Alyse_Davidson@bnz.co.nz" },
+    "commission": { "upfront": 0.0055, "trail": 0.0015, "rc": "0.55% on undrawn", "refix": null },
+    "boarderIncome": { "lte80": "2 Boarders $250 per person", "gt80": "2 Boarders $250 per person" },
+    "productFeatures": {
+      "offset": "Yes", "offsetAccounts": "50", "weeklyIncrease": "5% (incl lump sum)",
+      "lumpSumNoFees": "5%", "bizAddback": "Some", "revCr": "P&I", "revCrLimit": "$500k",
+      "multiHousehold": "No", "fundsAvailability": "Medium", "minRepaymentFreq": "Weekly",
+      "kiwiOwned": "No", "kaingaOraFhl": "No", "availableLimitsRedraw": "No", "brokerAccess": "No"
+    }
+  },
+  "anz": {
+    "name": "ANZ",
+    "resourcesFolderUrl": "",
+    "rateCard": {
+      "6mo":  { "lte80": 4.49, "gt80": 4.84 },
+      "1y":   { "lte80": 4.49, "gt80": 5.04 },
+      "18mo": { "lte80": 4.75, "gt80": 5.34 },
+      "2y":   { "lte80": 4.89, "gt80": 5.64 },
+      "3y":   { "lte80": 5.29, "gt80": 5.84 }
+    },
+    "trafficLights": {
+      "lte80":   { "existing": "Pre-approval & Live", "new": "Pre-approval & Live" },
+      "80_90":   { "existing": "Pre-approval & Live", "new": "Live Only" }
+    },
+    "turnaround": { "retail": 4, "business": 4 },
+    "cashback":   { "pctLte80": 0.009, "max80_85": 0, "fhb": 5000 },
+    "lep":        { "80_85": "Standard carded", "85_90": "0.25% discount", "90_95": null },
+    "fees":       { "application": "$0", "nurRra": "$25" },
+    "lowEquityUmi": { "80": "$100", "80_85": "$400", "85_90": "$400", "90_95": "N/A" },
+    "serviceRate": 6.70,
+    "bdm":  { "name": "Mike Tunai", "phone": "027 268 8705", "email": "Mike.Tunai@anz.com" },
+    "bdm2": { "name": "Mike Stuck", "phone": "021 886 460",  "email": "michael.stuck@anz.com", "role": "Team manager Personal lines" },
+    "commission": {
+      "upfront": 0.0085,
+      "trail": null,
+      "rc": "0.85%",
+      "refix": 200,
+      "clawback": { "0_180": 0.80, "180_360": 0.55, "360_720": 0.33, "note": "Reduces linear every 30 days" }
+    },
+    "boarderIncome": { "lte80": "2 Boarders $250 per person", "gt80": "1 Boarder $250 per person" },
+    "productFeatures": {
+      "offset": "No", "offsetAccounts": "N/A", "weeklyIncrease": "Change Loan Term",
+      "lumpSumNoFees": "5%", "bizAddback": "Yes", "revCr": "Yes but fees ($12.50 PM)", "revCrLimit": "$350k",
+      "multiHousehold": "No", "fundsAvailability": "High", "minRepaymentFreq": "Weekly",
+      "kiwiOwned": "No", "kaingaOraFhl": "No", "availableLimitsRedraw": "No", "brokerAccess": "No"
+    }
+  },
+  "westpac": {
+    "name": "Westpac",
+    "resourcesFolderUrl": "",
+    "rateCard": {
+      "6mo":  { "lte80": 4.49, "gt80": "4.49 + LEP" },
+      "1y":   { "lte80": 4.49, "gt80": "4.59 + LEP" },
+      "18mo": { "lte80": 4.85, "gt80": "4.85 + LEP" },
+      "2y":   { "lte80": 4.99, "gt80": "5.19 + LEP" },
+      "3y":   { "lte80": 5.29, "gt80": "5.29 + LEP" }
+    },
+    "trafficLights": {
+      "lte80":   { "existing": "Pre-approval & Live", "new": "Pre-approval & Live" },
+      "80_90":   { "existing": "Pre-approval & Live", "new": "Live Only" }
+    },
+    "turnaround": { "retail": 6, "business": 8 },
+    "cashback":   { "pctLte80": 0.009, "max80_85": 0, "fhb": 5000, "koLmi": 0.012 },
+    "lep":        { "80_85": 0.0025, "85_90": 0.0075, "90_95": null },
+    "fees":       { "application": "$0", "nurRra": "$30" },
+    "lowEquityUmi": { "80": "$150", "80_85": "N/A", "85_90": "N/A", "90_95": "N/A" },
+    "serviceRate": 6.55,
+    "bdm": { "name": "Chen Wang", "phone": "021 712 306", "email": "chen.wang@westpac.co.nz" },
+    "commission": { "upfront": 0.009, "trail": 0, "rc": "0.60%", "refix": null },
+    "boarderIncome": { "lte80": "2 Boarders no maximum", "gt80": "1 Boarder no maximum" },
+    "productFeatures": {
+      "offset": "Yes", "offsetAccounts": "10", "weeklyIncrease": "20% over min",
+      "lumpSumNoFees": "No", "bizAddback": "Some", "revCr": "Yes", "revCrLimit": "$500k+",
+      "multiHousehold": "No", "fundsAvailability": "Medium", "minRepaymentFreq": "Fortnightly",
+      "kiwiOwned": "No", "kaingaOraFhl": "Yes", "availableLimitsRedraw": "Yes", "brokerAccess": "No"
+    }
+  },
+  "kiwibank": {
+    "name": "Kiwibank",
+    "resourcesFolderUrl": "",
+    "rateCard": {
+      "6mo":  { "lte80": 4.45, "gt80": 5.09 },
+      "1y":   { "lte80": 4.45, "gt80": 5.19 },
+      "18mo": { "lte80": null, "gt80": null },
+      "2y":   { "lte80": 5.09, "gt80": 5.69 },
+      "3y":   { "lte80": 5.45, "gt80": 5.95 }
+    },
+    "trafficLights": {
+      "lte80":   { "existing": "Pre-approval & Live", "new": "Pre-approval & Live" },
+      "80_90":   { "existing": "Pre-approval & Live", "new": "Live Only" }
+    },
+    "turnaround": { "retail": 9, "business": 11 },
+    "cashback":   { "pctLte80": 0.009, "max80_85": 0, "fhb": 5000 },
+    "lep":        { "80_85": "Low Equity Pricing", "85_90": "Low Equity Pricing", "90_95": null },
+    "fees":       { "application": "$0", "nurRra": "$0" },
+    "lowEquityUmi": { "80": "$100 ($400 RB exempt)", "80_85": "$400", "85_90": "$400", "90_95": "N/A" },
+    "serviceRate": 6.70,
+    "bdm": { "name": "Kevin Beattie", "phone": "027 257 9609", "email": "kevin.beattie@kiwibank.co.nz" },
+    "commission": { "upfront": 0.009, "trail": 0, "rc": "0.60%", "refix": null },
+    "boarderIncome": { "lte80": "2 Boarders $250 per person", "gt80": "1 Boarder $250 per person" },
+    "productFeatures": {
+      "offset": "Yes", "offsetAccounts": "8", "weeklyIncrease": "5% (incl lump sum)",
+      "lumpSumNoFees": "5%", "bizAddback": "Some", "revCr": "P&I", "revCrLimit": "$500k",
+      "multiHousehold": "No", "fundsAvailability": "Low", "minRepaymentFreq": "Weekly",
+      "kiwiOwned": "Yes", "kaingaOraFhl": "Yes", "availableLimitsRedraw": "No", "brokerAccess": "No"
+    }
+  }
+}
