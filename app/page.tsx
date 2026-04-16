@@ -342,12 +342,12 @@ export default function Dashboard() {
             <span className="text-sm">Pipeline</span>
           </a>
           {[
-            { icon: 'description', label: 'Applications' },
-            { icon: 'folder_shared', label: 'Client Vault' },
-            { icon: 'account_balance', label: 'Lenders' },
-            { icon: 'analytics', label: 'Reports' },
+            { icon: 'description', label: 'Applications', href: '#' },
+            { icon: 'folder_shared', label: 'Client Vault', href: '#' },
+            { icon: 'account_balance', label: 'Lenders', href: '/lenders' },
+            { icon: 'analytics', label: 'Reports', href: '#' },
           ].map(item => (
-            <a key={item.label} className="flex items-center gap-3 px-4 py-3 text-[#3f484f] hover:text-[#228EBF] hover:bg-white/40 transition-all duration-200" href="#">
+            <a key={item.label} className="flex items-center gap-3 px-4 py-3 text-[#3f484f] hover:text-[#228EBF] hover:bg-white/40 transition-all duration-200" href={item.href}>
               <span className="material-symbols-outlined">{item.icon}</span>
               <span className="text-sm">{item.label}</span>
             </a>
