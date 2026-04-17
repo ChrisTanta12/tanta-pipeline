@@ -332,9 +332,9 @@ export default function Dashboard() {
     const topSources = Object.entries(sources).sort((a, b) => b[1] - a[1]).slice(0, 5);
 
     return {
-      monthlySettledValue, monthlySettledCount: monthlySettled.length,
-      monthlySubmittedValue, monthlySubmittedCount: monthlySubmitted.length,
-      monthlyNewValue, monthlyNewCount: monthlyNew.length,
+      monthlySettledValue, monthlySettledCount: monthlySettled.length, monthlySettledDeals: monthlySettled,
+      monthlySubmittedValue, monthlySubmittedCount: monthlySubmitted.length, monthlySubmittedDeals: monthlySubmitted,
+      monthlyNewValue, monthlyNewCount: monthlyNew.length, monthlyNewDeals: monthlyNew,
       ytdSettledValue, ytdSubmittedValue, ytdNewValue, ytdCommission,
       stageBreakdown, activePipelineValue, inProgress, completed,
       upcoming, pendingSettlementValue,
@@ -347,6 +347,9 @@ export default function Dashboard() {
       ageByStage,
     };
   }, [filtered, allOpps]);
+
+  // Drilldown modal state — clicking a stat tile shows the underlying deals.
+  const [drilldown, setDrilldown] = useState<{ title: string; subtitle: string; deals: Opportunity[] } | null>(null);
 
   // ===== Render =====
   if (loading && allOpps.length === 0) {
@@ -456,20 +459,27 @@ export default function Dashboard() {
         )}
 
         <div className="p-8 space-y-6">
-          {/* TOP ROW: Summary Cards */}
+          {/* TOP ROW: Summary Cards (clickable — opens a drilldown showing which deals make up the number) */}
           <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-6 gap-4">
             {[
-              { label: 'Monthly Settlements $$$', value: fmtBigCurrency(metrics.monthlySettledValue), border: 'border-primary' },
-              { label: '# of Settlements', value: String(metrics.monthlySettledCount), border: 'border-secondary' },
-              { label: 'Monthly Submissions $$$', value: fmtBigCurrency(metrics.monthlySubmittedValue), border: 'border-primary' },
-              { label: '# of Submissions', value: String(metrics.monthlySubmittedCount), border: 'border-secondary' },
-              { label: 'Monthly New Deals $$$', value: fmtBigCurrency(metrics.monthlyNewValue), border: 'border-primary' },
-              { label: '# of New Deals', value: String(metrics.monthlyNewCount), border: 'border-secondary' },
+              { label: 'Monthly Settlements $$$', value: fmtBigCurrency(metrics.monthlySettledValue), border: 'border-primary',   deals: metrics.monthlySettledDeals,  subtitle: 'Mapped-bucket = Settled · closed or settlement-dated this month' },
+              { label: '# of Settlements',        value: String(metrics.monthlySettledCount),          border: 'border-secondary', deals: metrics.monthlySettledDeals,  subtitle: 'Mapped-bucket = Settled · closed or settlement-dated this month' },
+              { label: 'Monthly Submissions $$$', value: fmtBigCurrency(metrics.monthlySubmittedValue),border: 'border-primary',   deals: metrics.monthlySubmittedDeals,subtitle: 'Currently in Submitted bucket · modified this month' },
+              { label: '# of Submissions',        value: String(metrics.monthlySubmittedCount),        border: 'border-secondary', deals: metrics.monthlySubmittedDeals,subtitle: 'Currently in Submitted bucket · modified this month' },
+              { label: 'Monthly New Deals $$$',   value: fmtBigCurrency(metrics.monthlyNewValue),      border: 'border-primary',   deals: metrics.monthlyNewDeals,      subtitle: 'All mapped deals created this month' },
+              { label: '# of New Deals',          value: String(metrics.monthlyNewCount),              border: 'border-secondary', deals: metrics.monthlyNewDeals,      subtitle: 'All mapped deals created this month' },
             ].map((card, i) => (
-              <div key={i} className={`bg-surface-container-lowest p-5 rounded-xl border-b-2 ${card.border} shadow-md`}>
-                <p className="text-[10px] font-bold uppercase tracking-wider text-on-surface-variant mb-1">{card.label}</p>
+              <button
+                key={i}
+                onClick={() => setDrilldown({ title: card.label, subtitle: card.subtitle, deals: card.deals })}
+                className={`bg-surface-container-lowest p-5 rounded-xl border-b-2 ${card.border} shadow-md text-left hover:shadow-lg hover:ring-2 hover:ring-primary/20 transition-all cursor-pointer`}
+              >
+                <p className="text-[10px] font-bold uppercase tracking-wider text-on-surface-variant mb-1 flex items-center gap-1">
+                  {card.label}
+                  <span className="material-symbols-outlined text-[12px] opacity-40 group-hover:opacity-100">info</span>
+                </p>
                 <p className="text-xl font-black text-on-surface">{card.value}</p>
-              </div>
+              </button>
             ))}
           </div>
 
@@ -750,6 +760,65 @@ export default function Dashboard() {
           </div>
         </footer>
       </main>
+
+      {/* Stat Drilldown Modal — shown when a headline stat tile is clicked */}
+      {drilldown && (
+        <div className="fixed inset-0 bg-black/50 z-[100] flex items-center justify-center" onClick={() => setDrilldown(null)}>
+          <div className="bg-white rounded-xl w-full max-w-3xl max-h-[85vh] overflow-hidden flex flex-col shadow-2xl" onClick={e => e.stopPropagation()}>
+            <div className="flex items-start justify-between p-6 border-b border-surface-container-high">
+              <div>
+                <p className="text-[10px] uppercase tracking-widest font-bold text-on-surface-variant mb-1">Drilldown</p>
+                <h2 className="text-lg font-bold text-on-surface">{drilldown.title}</h2>
+                <p className="text-xs text-on-surface-variant mt-1">{drilldown.subtitle}</p>
+                <p className="text-[10px] text-on-surface-variant mt-2">
+                  {drilldown.deals.length} deal{drilldown.deals.length === 1 ? '' : 's'} · Total ${drilldown.deals.reduce((s, o) => s + numVal(o.value), 0).toLocaleString('en-NZ')}
+                </p>
+              </div>
+              <button onClick={() => setDrilldown(null)} className="text-2xl text-on-surface-variant hover:text-on-surface leading-none px-2">&times;</button>
+            </div>
+
+            <div className="overflow-y-auto flex-1">
+              {drilldown.deals.length === 0 ? (
+                <div className="p-10 text-center text-sm text-on-surface-variant">
+                  No deals match this calculation.
+                </div>
+              ) : (
+                <table className="w-full text-sm text-left">
+                  <thead className="text-[10px] font-bold text-on-surface-variant uppercase border-b border-surface-container-high bg-surface-container-low sticky top-0">
+                    <tr>
+                      <th className="py-2 px-6">Client</th>
+                      <th className="py-2 px-3">Stage</th>
+                      <th className="py-2 px-3">Lender</th>
+                      <th className="py-2 px-3 text-right">Value</th>
+                      <th className="py-2 px-3 text-right">Est. Comm.</th>
+                      <th className="py-2 px-3 text-right">Modified</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-surface-container-low">
+                    {drilldown.deals
+                      .slice()
+                      .sort((a, b) => numVal(b.value) - numVal(a.value))
+                      .map(o => (
+                        <tr
+                          key={o.opportunityId}
+                          className="hover:bg-surface-bright cursor-pointer"
+                          onClick={() => { setSelectedOpp(o); setDrilldown(null); }}
+                        >
+                          <td className="py-2 px-6 font-semibold">{o.profileName || '-'}</td>
+                          <td className="py-2 px-3 text-xs text-on-surface-variant">{o.stageName}</td>
+                          <td className="py-2 px-3 text-xs">{o.mortgageApplication?.lender || '-'}</td>
+                          <td className="py-2 px-3 text-right">{fmtCurrency(numVal(o.value))}</td>
+                          <td className="py-2 px-3 text-right text-primary">{fmtCurrency(getCommission(o))}</td>
+                          <td className="py-2 px-3 text-right text-xs text-on-surface-variant">{fmtDate(o.modifiedTimestamp)}</td>
+                        </tr>
+                    ))}
+                  </tbody>
+                </table>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Detail Modal */}
       {selectedOpp && (
