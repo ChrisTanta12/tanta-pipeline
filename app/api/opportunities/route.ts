@@ -22,11 +22,14 @@ export async function GET(request: NextRequest) {
     // depending on driver version. Number() normalises either case.
     const totalRecords = Number((totalRes.rows[0] as any)?.total ?? 0);
 
+    // Order by entity_id DESC (newest Trail IDs first). The previous JSON-extract
+    // ORDER BY was being dropped or timing out on larger page sizes on the serverless
+    // connection — using the primary key column keeps the plan simple.
     const rowsRes = await sql<{ data: any; synced_at: string }>`
       SELECT data, synced_at
       FROM trail_entities
       WHERE kind = 'opportunity'
-      ORDER BY (data->>'modifiedTimestamp') DESC NULLS LAST, entity_id DESC
+      ORDER BY entity_id DESC
       LIMIT ${pageSize} OFFSET ${offset}
     `;
 
