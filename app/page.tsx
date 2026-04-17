@@ -113,14 +113,29 @@ function getCommission(opp: { value: number | string; mortgageApplication?: Mort
   return numVal(opp.value) * getCommissionRate(opp.mortgageApplication?.lender);
 }
 
-// Map Trail stage names to display names
+// Map Trail stage names to dashboard buckets.
+// Trail suffixes stages with "*Broker" / "*Admin" / "* Close Deal" etc., so we
+// match on keywords rather than exact strings. Double-spaces and case variations
+// also happen; normalise before matching.
 function displayStage(s: string): string {
-  const map: Record<string, string> = {
-    'Book Strategy Session': 'Opportunity', 'Deal Submitted': 'Submitted',
-    'Conditional Approval': 'PreApproval', 'House Under Contract': 'Unconditional',
-    'Loan Settled': 'Settled', 'Commission Received': 'Settled',
-  };
-  return map[s] || s;
+  if (!s) return s;
+  const n = s.toLowerCase().replace(/\s+/g, ' ').trim();
+
+  // Longer/specific matches first so "Book Strategy Session" doesn't collide
+  // with a future "Strategy Session Scheduled" check.
+  if (n.includes('loan structure meeting'))          return 'Unconditional';
+  if (n.includes('preparing bank approval'))         return 'Opportunity';
+  if (n.includes('book strategy session'))           return 'Opportunity';
+  if (n.includes('strategy session scheduled'))      return 'Opportunity';
+  if (n.includes('live') && n.includes('deal only')) return 'Opportunity';
+  if (n.includes('deal submitted'))                  return 'Submitted';
+  if (n.includes('waiting for application approval'))return 'Submitted';
+  if (n.includes('conditional approval'))            return 'PreApproval';
+  if (n.includes('house under contract'))            return 'Unconditional';
+  if (n.includes('ready to settle'))                 return 'Unconditional';
+  if (n.includes('loan settled'))                    return 'Settled';
+  if (n.includes('commission received'))             return 'Settled';
+  return s;
 }
 
 // ===== Main Component =====
