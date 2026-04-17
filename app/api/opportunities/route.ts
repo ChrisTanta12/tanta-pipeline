@@ -15,10 +15,12 @@ export async function GET(request: NextRequest) {
   const offset = (page - 1) * pageSize;
 
   try {
-    const totalRes = await sql<{ c: string }>`
-      SELECT COUNT(*)::text AS c FROM trail_entities WHERE kind = 'opportunity'
+    const totalRes = await sql`
+      SELECT COUNT(*) AS total FROM trail_entities WHERE kind = 'opportunity'
     `;
-    const totalRecords = parseInt(totalRes.rows[0]?.c ?? '0', 10);
+    // COUNT(*) returns bigint; @vercel/postgres hands it back as a string or number
+    // depending on driver version. Number() normalises either case.
+    const totalRecords = Number((totalRes.rows[0] as any)?.total ?? 0);
 
     const rowsRes = await sql<{ data: any; synced_at: string }>`
       SELECT data, synced_at
