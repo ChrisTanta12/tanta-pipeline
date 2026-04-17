@@ -218,6 +218,13 @@ export default function Dashboard() {
   const pipelines = useMemo(() => [...new Set(allOpps.map(o => o.pipelineName).filter(Boolean))].sort(), [allOpps]);
   const advisers = useMemo(() => [...new Set(allOpps.map(o => o.adviserName).filter(Boolean))].sort(), [allOpps]);
 
+  // Only these stages from the displayStage() mapping count toward the main
+  // pipeline metrics. Anything else (Mortgage Servicing, Prospecting, Insurance,
+  // KiwiSaver, etc.) is excluded from "Deals in Progress", "Active Pipeline $$$",
+  // monthly settlements/submissions and so on.
+  const MAPPED_BUCKETS = new Set(['Opportunity', 'Submitted', 'PreApproval', 'Unconditional', 'Settled', 'Lost']);
+  const isMapped = (stageName?: string) => MAPPED_BUCKETS.has(displayStage(stageName ?? ''));
+
   const filtered = useMemo(() => allOpps.filter(o => {
     if (filterPipeline !== 'all' && o.pipelineName !== filterPipeline) return false;
     if (filterAdviser !== 'all' && o.adviserName !== filterAdviser) return false;
@@ -228,51 +235,55 @@ export default function Dashboard() {
 
   // ===== Computed Metrics =====
   const metrics = useMemo(() => {
-    const open = filtered.filter(o => o.status === 'Open');
-    const allForPipeline = allOpps; // Use all for YTD calcs regardless of filter
+    // Restrict to Mortgage-Advice-bucket deals only for headline metrics.
+    const mappedFiltered = filtered.filter(o => isMapped(o.stageName));
+    const mappedAll = allOpps.filter(o => isMapped(o.stageName));
 
-    // Monthly figures - settlements
+    const open = mappedFiltered.filter(o => o.status === 'Open');
+    const allForPipeline = mappedAll; // Use all mapped deals for YTD calcs regardless of filter
+
+    // Monthly settlements — any deal whose mapped bucket is 'Settled'
     const monthlySettled = allForPipeline.filter(o =>
-      (o.stageName === 'Loan Settled' || o.stageName === 'Commission Received' || o.status === 'Closed') &&
+      (displayStage(o.stageName) === 'Settled' || o.status === 'Closed') &&
       (isThisMonth(o.closedDate) || isThisMonth(o.mortgageApplication?.expectedSettlementDate))
     );
     const monthlySettledValue = monthlySettled.reduce((s, o) => s + numVal(o.value), 0);
 
-    // Monthly submissions
+    // Monthly submissions — deals currently in the 'Submitted' bucket, modified this month
     const monthlySubmitted = allForPipeline.filter(o =>
-      o.stageName === 'Deal Submitted' && isThisMonth(o.modifiedTimestamp || o.createdTimestamp)
+      displayStage(o.stageName) === 'Submitted' && isThisMonth(o.modifiedTimestamp || o.createdTimestamp)
     );
     const monthlySubmittedValue = monthlySubmitted.reduce((s, o) => s + numVal(o.value), 0);
 
-    // Monthly new deals
+    // Monthly new deals — any mapped deal created this month
     const monthlyNew = allForPipeline.filter(o => isThisMonth(o.createdTimestamp));
     const monthlyNewValue = monthlyNew.reduce((s, o) => s + numVal(o.value), 0);
 
     // YTD figures
     const ytdSettled = allForPipeline.filter(o =>
-      (o.stageName === 'Loan Settled' || o.status === 'Closed') && isThisYear(o.closedDate)
+      (displayStage(o.stageName) === 'Settled' || o.status === 'Closed') && isThisYear(o.closedDate)
     );
     const ytdSettledValue = ytdSettled.reduce((s, o) => s + numVal(o.value), 0);
     const ytdSubmitted = allForPipeline.filter(o =>
-      o.stageName === 'Deal Submitted' && isThisYear(o.createdTimestamp)
+      displayStage(o.stageName) === 'Submitted' && isThisYear(o.createdTimestamp)
     );
     const ytdSubmittedValue = ytdSubmitted.reduce((s, o) => s + numVal(o.value), 0);
     const ytdNew = allForPipeline.filter(o => isThisYear(o.createdTimestamp));
     const ytdNewValue = ytdNew.reduce((s, o) => s + numVal(o.value), 0);
 
-    // Pipeline breakdown by stage
+    // Pipeline breakdown by stage (only mapped deals)
     const stageBreakdown: Record<string, { count: number; value: number }> = {};
-    filtered.forEach(o => {
+    mappedFiltered.forEach(o => {
       const stage = displayStage(o.stageName);
       if (!stageBreakdown[stage]) stageBreakdown[stage] = { count: 0, value: 0 };
       stageBreakdown[stage].count++;
       stageBreakdown[stage].value += numVal(o.value);
     });
 
-    // Active pipeline (open deals)
+    // Active pipeline (open, mapped deals)
     const activePipelineValue = open.reduce((s, o) => s + numVal(o.value), 0);
     const inProgress = open.length;
-    const completed = filtered.filter(o => o.status === 'Closed' || o.status === 'Lost').length;
+    const completed = mappedFiltered.filter(o => o.status === 'Closed' || o.status === 'Lost').length;
 
     // Upcoming settlements
     const upcoming = open
@@ -285,15 +296,14 @@ export default function Dashboard() {
       .slice(0, 6);
     const pendingSettlementValue = upcoming.reduce((s, o) => s + numVal(o.value), 0);
 
-    // Conversion rates (based on all data)
+    // Conversion rates (scoped to mapped-bucket deals only)
     const totalLeads = allForPipeline.length;
-    const totalSubmissions = allForPipeline.filter(o =>
-      ['Deal Submitted', 'Conditional Approval', 'House Under Contract', 'Unconditional',
-        'Loan Settled', 'Commission Received', 'Submitted', 'PreApproval'].includes(o.stageName) ||
-      o.status === 'Closed'
-    ).length;
+    const totalSubmissions = allForPipeline.filter(o => {
+      const b = displayStage(o.stageName);
+      return b === 'Submitted' || b === 'PreApproval' || b === 'Unconditional' || b === 'Settled' || o.status === 'Closed';
+    }).length;
     const totalSettled = allForPipeline.filter(o =>
-      o.stageName === 'Loan Settled' || o.stageName === 'Commission Received' || o.status === 'Closed'
+      displayStage(o.stageName) === 'Settled' || o.status === 'Closed'
     ).length;
     const totalLost = allForPipeline.filter(o => o.status === 'Lost').length;
 
