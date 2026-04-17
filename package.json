@@ -6,9 +6,10 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "db:migrate": "tsx scripts/migrate.ts",
-    "db:seed": "tsx scripts/seed.ts",
-    "oauth:setup": "tsx scripts/oauth-setup.ts"
+    "db:migrate": "tsx --env-file=.env.local scripts/migrate.ts",
+    "db:seed": "tsx --env-file=.env.local scripts/seed.ts",
+    "oauth:setup": "tsx --env-file=.env.local scripts/oauth-setup.ts",
+    "trail:sync": "tsx --env-file=.env.local scripts/trail-sync.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.32.1",

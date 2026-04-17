@@ -384,6 +384,7 @@ export default function Dashboard() {
               <span className="material-symbols-outlined text-on-surface-variant cursor-pointer hover:bg-white/50 p-1.5 rounded-lg transition-colors">help</span>
               <span className="material-symbols-outlined text-on-surface-variant cursor-pointer hover:bg-white/50 p-1.5 rounded-lg transition-colors" onClick={fetchData}>settings</span>
             </div>
+            <TrailSyncButton />
             <div className="flex items-center gap-3 border-l border-outline-variant pl-6">
               <div className="text-right">
                 <p className="text-sm font-bold text-on-surface">Tanta</p>
@@ -746,5 +747,75 @@ export default function Dashboard() {
         </div>
       )}
     </div>
+  );
+}
+
+// ===== Trail Sync Button =====
+function TrailSyncButton() {
+  const [status, setStatus] = useState<'idle' | 'queued' | 'running' | 'success' | 'error'>('idle');
+  const [lastSync, setLastSync] = useState<string | null>(null);
+
+  const fetchStatus = useCallback(async () => {
+    try {
+      const r = await fetch('/api/trail-sync');
+      const d = await r.json();
+      const latest = (d.jobs ?? [])[0];
+      if (!latest) return;
+      if (latest.status === 'pending') setStatus('queued');
+      else if (latest.status === 'running') setStatus('running');
+      else if (latest.status === 'failed') setStatus('error');
+      else if (latest.status === 'done') {
+        setStatus('idle');
+        if (latest.finished_at) setLastSync(latest.finished_at);
+      }
+    } catch { /* silent */ }
+  }, []);
+
+  useEffect(() => {
+    fetchStatus();
+    const t = setInterval(fetchStatus, 30_000);
+    return () => clearInterval(t);
+  }, [fetchStatus]);
+
+  const onClick = async () => {
+    setStatus('queued');
+    try {
+      const r = await fetch('/api/trail-sync', { method: 'POST' });
+      if (!r.ok) throw new Error('Queue failed');
+      // Start polling more aggressively for ~3 minutes so the UI updates when the office PC picks it up.
+      let ticks = 0;
+      const t = setInterval(async () => {
+        ticks++;
+        await fetchStatus();
+        if (ticks > 36) clearInterval(t); // 36 * 5s = 3min
+      }, 5_000);
+    } catch (err) {
+      setStatus('error');
+    }
+  };
+
+  const label =
+    status === 'queued'  ? 'Queued...' :
+    status === 'running' ? 'Syncing from office PC...' :
+    status === 'error'   ? 'Sync failed — click to retry' :
+    'Sync from Trail';
+
+  const color =
+    status === 'queued' || status === 'running' ? 'bg-[#EAB308]' :
+    status === 'error'                          ? 'bg-error' :
+                                                  'bg-secondary';
+
+  const tooltip = lastSync ? `Last synced ${new Date(lastSync).toLocaleString('en-NZ', { hour: '2-digit', minute: '2-digit', day: 'numeric', month: 'short' })}` : 'Not yet synced';
+
+  return (
+    <button
+      onClick={onClick}
+      disabled={status === 'queued' || status === 'running'}
+      className={`px-3 py-2 rounded-lg text-xs font-bold text-white flex items-center gap-2 ${color} disabled:opacity-75 transition-colors`}
+      title={tooltip}
+    >
+      <span className={`material-symbols-outlined text-sm ${status === 'running' || status === 'queued' ? 'animate-spin' : ''}`}>sync</span>
+      {label}
+    </button>
   );
 }

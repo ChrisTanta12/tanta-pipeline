@@ -32,3 +32,33 @@ CREATE TABLE IF NOT EXISTS processed_emails (
   bank_id           TEXT,
   processed_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
+
+-- Cache of Trail CRM entities (opportunities, pipelines) kept in sync by the
+-- office-side trail-sync script. Vercel routes read from here instead of
+-- calling Trail directly, so Trail's IP whitelist only needs the office IP.
+CREATE TABLE IF NOT EXISTS trail_entities (
+  kind         TEXT   NOT NULL,     -- 'opportunity' | 'pipeline'
+  entity_id    BIGINT NOT NULL,
+  data         JSONB  NOT NULL,
+  synced_at    TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  PRIMARY KEY (kind, entity_id)
+);
+
+CREATE INDEX IF NOT EXISTS trail_entities_kind ON trail_entities (kind);
+
+-- Queue of sync jobs. The script running on the office PC polls this table
+-- every couple of minutes and runs a full sync whenever there's a pending row.
+CREATE TABLE IF NOT EXISTS trail_sync_jobs (
+  id             SERIAL PRIMARY KEY,
+  requested_at   TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  started_at     TIMESTAMPTZ,
+  finished_at    TIMESTAMPTZ,
+  status         TEXT NOT NULL DEFAULT 'pending',    -- pending | running | done | failed
+  requested_by   TEXT,                                -- 'schedule' | 'manual' | 'startup'
+  opportunities  INTEGER,
+  pipelines      INTEGER,
+  error          TEXT
+);
+
+CREATE INDEX IF NOT EXISTS trail_sync_jobs_pending ON trail_sync_jobs (status, requested_at) WHERE status = 'pending';
+CREATE INDEX IF NOT EXISTS trail_sync_jobs_recent ON trail_sync_jobs (requested_at DESC);
