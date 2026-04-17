@@ -66,7 +66,13 @@ async function main() {
 
   try {
     const opps = await fetchAllOpportunities();
-    const pipelines = await fetchAllPipelines();
+    // Trail's /pipelines/search endpoint rejects an empty searchString ("Search string
+    // is required"). Rather than fetch pipelines via the API at all, we derive them
+    // from the opportunities we just pulled — every opportunity carries
+    // pipelineId / pipelineName / stageId / stageName, which is everything the
+    // dashboard needs.
+    const pipelines = derivePipelinesFromOpportunities(opps);
+    console.log(`[trail-sync]   derived ${pipelines.length} pipelines from opportunities`);
 
     await upsertEntities('opportunity', opps, 'opportunityId');
     await upsertEntities('pipeline', pipelines, 'pipelineId');
@@ -122,14 +128,35 @@ async function fetchPaginated(label: string, path: string): Promise<any[]> {
 }
 
 async function fetchAllOpportunities(): Promise<any[]> {
-  // Trail exposes both /opportunities (list) and /opportunities/search. Search with
-  // empty searchString is reliably paginated on beta; stick with it.
-  return fetchPaginated('opportunities', '/opportunities/search?searchString=');
+  // Use the plain list endpoint. Trail's /opportunities/search requires a non-empty
+  // searchString; /opportunities accepts page+pageSize and returns everything.
+  return fetchPaginated('opportunities', '/opportunities');
 }
 
-async function fetchAllPipelines(): Promise<any[]> {
-  // /pipelines/search?searchString= returns all pipelines with their stages.
-  return fetchPaginated('pipelines', '/pipelines/search?searchString=');
+/**
+ * Pipelines don't have a plain list endpoint we can call (only /pipelines/search,
+ * which requires a non-empty searchString). But every opportunity carries
+ * pipelineId/pipelineName/stageId/stageName denormalised, so we can derive the
+ * full pipeline+stage list from the opportunities we just fetched without
+ * another API call.
+ */
+function derivePipelinesFromOpportunities(opps: any[]): any[] {
+  const pipelines = new Map<number, { pipelineId: number; pipelineName: string; stages: Map<number, { stageId: number; stageName: string }> }>();
+  for (const o of opps) {
+    const pid = o.pipelineId;
+    if (pid === undefined || pid === null) continue;
+    if (!pipelines.has(pid)) {
+      pipelines.set(pid, { pipelineId: pid, pipelineName: o.pipelineName ?? '', stages: new Map() });
+    }
+    if (o.stageId !== undefined && o.stageId !== null) {
+      pipelines.get(pid)!.stages.set(o.stageId, { stageId: o.stageId, stageName: o.stageName ?? '' });
+    }
+  }
+  return Array.from(pipelines.values()).map(p => ({
+    pipelineId: p.pipelineId,
+    pipelineName: p.pipelineName,
+    stages: Array.from(p.stages.values()),
+  }));
 }
 
 async function upsertEntities(kind: 'opportunity' | 'pipeline', records: any[], idField: string) {
