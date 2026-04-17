@@ -15,7 +15,8 @@
  *   TRAIL_API_KEY    # your Trail API key
  *   TRAIL_BASE_URL   # default 'https://beta.api.gettrail.com/api/v1'
  *
- * Trail API reference: see Claude Home Base/trail-api-docs.md
+ * Trail API reference: see Claude Home Base/Trail Integration/trail-api-docs.md
+ *   and Claude Home Base/Trail Integration/trail-api-howto.md for practical tips.
  *   Response envelope for lists: { status, message, data: { items, totalItems, page, pageSize, totalPages } }
  */
 import { sql } from '@vercel/postgres';
