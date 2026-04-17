@@ -14,6 +14,9 @@
  *   POSTGRES_URL     # Neon connection string
  *   TRAIL_API_KEY    # your Trail API key
  *   TRAIL_BASE_URL   # default 'https://beta.api.gettrail.com/api/v1'
+ *
+ * Trail API reference: see Claude Home Base/trail-api-docs.md
+ *   Response envelope for lists: { status, message, data: { items, totalItems, page, pageSize, totalPages } }
  */
 import { sql } from '@vercel/postgres';
 
@@ -32,7 +35,6 @@ async function main() {
   let requestedBy: 'schedule' | 'manual' | 'startup' = 'schedule';
 
   if (mode === 'check') {
-    // Find oldest pending job, claim it by setting status=running.
     const claim = await sql<{ id: number; requested_by: string | null }>`
       UPDATE trail_sync_jobs
       SET status = 'running', started_at = NOW()
@@ -53,7 +55,6 @@ async function main() {
     requestedBy = (claim.rows[0].requested_by as any) ?? 'manual';
     console.log(`[trail-sync] picked up job ${jobId} (${requestedBy})`);
   } else {
-    // Full scheduled sync — create our own job row so history is consistent.
     const insert = await sql<{ id: number }>`
       INSERT INTO trail_sync_jobs (status, started_at, requested_by)
       VALUES ('running', NOW(), 'schedule')
@@ -65,7 +66,7 @@ async function main() {
 
   try {
     const opps = await fetchAllOpportunities();
-    const pipelines = await fetchPipelines();
+    const pipelines = await fetchAllPipelines();
 
     await upsertEntities('opportunity', opps, 'opportunityId');
     await upsertEntities('pipeline', pipelines, 'pipelineId');
@@ -87,41 +88,52 @@ async function main() {
   }
 }
 
-async function fetchAllOpportunities(): Promise<any[]> {
+/**
+ * Generic paginated GET helper.
+ * Docs confirm all list endpoints return: { data: { items, totalItems, page, pageSize, totalPages } }
+ */
+async function fetchPaginated(label: string, path: string): Promise<any[]> {
   const out: any[] = [];
   let page = 1;
   while (true) {
-    const url = `${TRAIL_BASE_URL}/opportunities?page=${page}&pageSize=${PAGE_SIZE}`;
+    const sep = path.includes('?') ? '&' : '?';
+    const url = `${TRAIL_BASE_URL}${path}${sep}page=${page}&pageSize=${PAGE_SIZE}`;
     const res = await fetch(url, { headers: { Authorization: TRAIL_API_KEY } });
     if (!res.ok) {
       const body = await res.text().catch(() => '<no body>');
-      throw new Error(`Trail opportunities ${res.status}: ${body}`);
+      throw new Error(`Trail ${label} ${res.status}: ${body}`);
     }
-    const data = await res.json();
-    const records: any[] = data.records ?? [];
-    out.push(...records);
-    const total = data.totalRecords ?? out.length;
-    console.log(`[trail-sync]   page ${page}: ${records.length} records (${out.length}/${total})`);
-    if (records.length === 0 || out.length >= total) break;
+    const body = await res.json();
+    // Tolerate the documented { data: { items, totalItems } } shape plus legacy shapes.
+    const envelope = body?.data ?? body;
+    const items: any[] = envelope?.items ?? envelope?.records ?? (Array.isArray(body) ? body : []);
+    const total: number | undefined =
+      envelope?.totalItems ?? envelope?.totalRecords ?? envelope?.total ?? undefined;
+
+    out.push(...items);
+    console.log(`[trail-sync]   ${label} page ${page}: ${items.length} items (${out.length}${total !== undefined ? `/${total}` : ''})`);
+
+    if (items.length === 0) break;
+    if (total !== undefined && out.length >= total) break;
+    if (items.length < PAGE_SIZE) break;
     page++;
   }
   return out;
 }
 
-async function fetchPipelines(): Promise<any[]> {
-  const res = await fetch(`${TRAIL_BASE_URL}/pipelines`, { headers: { Authorization: TRAIL_API_KEY } });
-  if (!res.ok) {
-    const body = await res.text().catch(() => '<no body>');
-    throw new Error(`Trail pipelines ${res.status}: ${body}`);
-  }
-  const data = await res.json();
-  // The pipelines endpoint may return either { records: [...] } or a bare array.
-  return data.records ?? (Array.isArray(data) ? data : []);
+async function fetchAllOpportunities(): Promise<any[]> {
+  // Trail exposes both /opportunities (list) and /opportunities/search. Search with
+  // empty searchString is reliably paginated on beta; stick with it.
+  return fetchPaginated('opportunities', '/opportunities/search?searchString=');
+}
+
+async function fetchAllPipelines(): Promise<any[]> {
+  // /pipelines/search?searchString= returns all pipelines with their stages.
+  return fetchPaginated('pipelines', '/pipelines/search?searchString=');
 }
 
 async function upsertEntities(kind: 'opportunity' | 'pipeline', records: any[], idField: string) {
   if (records.length === 0) return;
-  // Chunk upserts so we don't blow out a single transaction.
   const CHUNK = 100;
   for (let i = 0; i < records.length; i += CHUNK) {
     const slice = records.slice(i, i + CHUNK);
