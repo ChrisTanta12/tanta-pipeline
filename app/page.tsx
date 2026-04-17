@@ -117,6 +117,13 @@ function getCommission(opp: { value: number | string; mortgageApplication?: Mort
 // Trail suffixes stages with "*Broker" / "*Admin" / "* Close Deal" etc., so we
 // match on keywords rather than exact strings. Double-spaces and case variations
 // also happen; normalise before matching.
+//
+// ⚠️ SANDBOX-SPECIFIC: These stage names are from Trail's beta/sandbox environment.
+// Our live Trail workspace uses a different set of stage names — when we switch
+// TRAIL_BASE_URL to production, revisit this mapping against the live stages
+// returned by /api/pipelines. Fallback `return s` means unknown stages just
+// show their raw name (safe default), but the stage breakdown table will show
+// zero counts until this mapping is updated.
 function displayStage(s: string): string {
   if (!s) return s;
   const n = s.toLowerCase().replace(/\s+/g, ' ').trim();
