@@ -155,6 +155,18 @@ export default function Dashboard() {
   const [lastSuccessfulUpdate, setLastSuccessfulUpdate] = useState('');
   const [autoRefreshInterval, setAutoRefreshInterval] = useState(5); // minutes
 
+  // Executive mode — gated by a shared PIN (see EXEC_PIN env var). When true,
+  // commission $ / %, estimated commission columns, and YTD commission show.
+  // When false (default), staff see pipeline data without any commission info.
+  const [execMode, setExecMode] = useState(false);
+  const [execModalOpen, setExecModalOpen] = useState(false);
+  useEffect(() => {
+    // Re-hydrate from localStorage on mount
+    if (typeof window !== 'undefined') {
+      setExecMode(window.localStorage.getItem('tanta.execMode') === '1');
+    }
+  }, []);
+
   // Filters
   const [filterPipeline, setFilterPipeline] = useState('all');
   const [filterAdviser, setFilterAdviser] = useState('all');
@@ -420,6 +432,16 @@ export default function Dashboard() {
               <span className="material-symbols-outlined text-on-surface-variant cursor-pointer hover:bg-white/50 p-1.5 rounded-lg transition-colors" onClick={fetchData}>settings</span>
             </div>
             <TrailSyncButton />
+            <ExecModeButton execMode={execMode} onToggle={() => {
+              if (execMode) {
+                // Lock back to staff mode
+                window.localStorage.removeItem('tanta.execMode');
+                setExecMode(false);
+              } else {
+                // Prompt for PIN
+                setExecModalOpen(true);
+              }
+            }} />
             <div className="flex items-center gap-3 border-l border-outline-variant pl-6">
               <div className="text-right">
                 <p className="text-sm font-bold text-on-surface">Tanta</p>
@@ -613,7 +635,9 @@ export default function Dashboard() {
                 <div className="text-right">
                   <p className="text-[10px] font-bold text-on-surface-variant uppercase">Total Pending</p>
                   <p className="text-xl font-black text-primary">{fmtCurrency(metrics.pendingSettlementValue)}</p>
-                  <p className="text-[10px] font-semibold text-on-surface-variant">Est. comm: {fmtCurrency(metrics.pendingCommission)}</p>
+                  {execMode && (
+                    <p className="text-[10px] font-semibold text-on-surface-variant">Est. comm: {fmtCurrency(metrics.pendingCommission)}</p>
+                  )}
                 </div>
               </div>
               <table className="w-full text-left">
@@ -621,7 +645,7 @@ export default function Dashboard() {
                   <tr>
                     <th className="pb-2">Client</th>
                     <th className="pb-2 text-right">Amount</th>
-                    <th className="pb-2 text-right">Comm.</th>
+                    {execMode && <th className="pb-2 text-right">Comm.</th>}
                     <th className="pb-2 text-right">Days</th>
                   </tr>
                 </thead>
@@ -630,12 +654,12 @@ export default function Dashboard() {
                     <tr key={o.opportunityId} className="hover:bg-surface-bright cursor-pointer" onClick={() => setSelectedOpp(o)}>
                       <td className="py-3 font-semibold">{(o.profileName || '').split(' ').slice(0, 2).join(' ')}</td>
                       <td className="py-3 text-right">{fmtCurrency(numVal(o.value))}</td>
-                      <td className="py-3 text-right text-primary">{fmtCurrency(getCommission(o))}</td>
+                      {execMode && <td className="py-3 text-right text-primary">{fmtCurrency(getCommission(o))}</td>}
                       <td className={`py-3 text-right font-bold ${o.daysAway <= 7 ? 'text-primary' : 'text-on-surface-variant'}`}>{o.daysAway}d</td>
                     </tr>
                   ))}
                   {metrics.upcoming.length === 0 && (
-                    <tr><td colSpan={4} className="py-4 text-center text-on-surface-variant">No upcoming settlements</td></tr>
+                    <tr><td colSpan={execMode ? 4 : 3} className="py-4 text-center text-on-surface-variant">No upcoming settlements</td></tr>
                   )}
                 </tbody>
               </table>
@@ -669,11 +693,13 @@ export default function Dashboard() {
             {/* Company Stats */}
             <div className="bg-surface-container-lowest p-6 rounded-xl shadow-md">
               <h3 className="text-sm font-bold text-on-surface tracking-tight uppercase mb-6">Company Stats</h3>
-              <div className="grid grid-cols-2 gap-4 mb-6">
-                <div>
-                  <p className="text-[10px] font-bold text-on-surface-variant uppercase">Avg Comm</p>
-                  <p className="text-lg font-black text-on-surface">{fmtCurrency(metrics.avgCommission)}</p>
-                </div>
+              <div className={`grid ${execMode ? 'grid-cols-2' : 'grid-cols-1'} gap-4 mb-6`}>
+                {execMode && (
+                  <div>
+                    <p className="text-[10px] font-bold text-on-surface-variant uppercase">Avg Comm</p>
+                    <p className="text-lg font-black text-on-surface">{fmtCurrency(metrics.avgCommission)}</p>
+                  </div>
+                )}
                 <div>
                   <p className="text-[10px] font-bold text-on-surface-variant uppercase">Avg Size</p>
                   <p className="text-lg font-black text-on-surface">{fmtCurrency(metrics.avgMortgageSize)}</p>
@@ -747,11 +773,15 @@ export default function Dashboard() {
               <span className="text-[10px] uppercase text-white/60">New Deals</span>
               <span className="text-sm font-bold">{fmtBigCurrency(metrics.ytdNewValue)}</span>
             </div>
-            <div className="h-6 w-px bg-white/20" />
-            <div className="flex items-center gap-2 whitespace-nowrap text-secondary-container">
-              <span className="text-[10px] uppercase text-white/60">Commission Est.</span>
-              <span className="text-sm font-bold">{fmtBigCurrency(metrics.ytdCommission)}</span>
-            </div>
+            {execMode && (
+              <>
+                <div className="h-6 w-px bg-white/20" />
+                <div className="flex items-center gap-2 whitespace-nowrap text-secondary-container">
+                  <span className="text-[10px] uppercase text-white/60">Commission Est.</span>
+                  <span className="text-sm font-bold">{fmtBigCurrency(metrics.ytdCommission)}</span>
+                </div>
+              </>
+            )}
           </div>
           <div className={`flex items-center gap-1.5 px-3 py-1 rounded-full ${dataIsStale ? 'bg-yellow-500/20' : 'bg-white/10'}`}>
             <div className={`w-2 h-2 rounded-full ${dataIsStale ? 'bg-yellow-400' : 'bg-green-400 animate-pulse'}`} />
@@ -790,7 +820,7 @@ export default function Dashboard() {
                       <th className="py-2 px-3">Stage</th>
                       <th className="py-2 px-3">Lender</th>
                       <th className="py-2 px-3 text-right">Value</th>
-                      <th className="py-2 px-3 text-right">Est. Comm.</th>
+                      {execMode && <th className="py-2 px-3 text-right">Est. Comm.</th>}
                       <th className="py-2 px-3 text-right">Modified</th>
                     </tr>
                   </thead>
@@ -808,7 +838,7 @@ export default function Dashboard() {
                           <td className="py-2 px-3 text-xs text-on-surface-variant">{o.stageName}</td>
                           <td className="py-2 px-3 text-xs">{o.mortgageApplication?.lender || '-'}</td>
                           <td className="py-2 px-3 text-right">{fmtCurrency(numVal(o.value))}</td>
-                          <td className="py-2 px-3 text-right text-primary">{fmtCurrency(getCommission(o))}</td>
+                          {execMode && <td className="py-2 px-3 text-right text-primary">{fmtCurrency(getCommission(o))}</td>}
                           <td className="py-2 px-3 text-right text-xs text-on-surface-variant">{fmtDate(o.modifiedTimestamp)}</td>
                         </tr>
                     ))}
@@ -831,7 +861,7 @@ export default function Dashboard() {
               { l: 'Pipeline / Stage', v: `${selectedOpp.pipelineName} → ${selectedOpp.stageName}` },
               { l: 'Adviser', v: selectedOpp.adviserName },
               { l: 'Deal Value', v: numVal(selectedOpp.value) ? fmtBigCurrency(numVal(selectedOpp.value)) : '-' },
-              { l: 'Est. Commission', v: numVal(selectedOpp.value) ? fmtCurrency(getCommission(selectedOpp)) + ` (${(getCommissionRate(selectedOpp.mortgageApplication?.lender) * 100).toFixed(2)}%)` : '-' },
+              ...(execMode && numVal(selectedOpp.value) ? [{ l: 'Est. Commission', v: fmtCurrency(getCommission(selectedOpp)) + ` (${(getCommissionRate(selectedOpp.mortgageApplication?.lender) * 100).toFixed(2)}%)` }] : []),
               { l: 'Lender', v: selectedOpp.mortgageApplication?.lender },
               { l: 'Settlement Date', v: fmtDate(selectedOpp.mortgageApplication?.expectedSettlementDate) },
               { l: 'Pre-Approval Expiry', v: fmtDate(selectedOpp.mortgageApplication?.preApprovalExpiryDate) },
@@ -847,6 +877,98 @@ export default function Dashboard() {
           </div>
         </div>
       )}
+
+      {/* Executive PIN Modal — unlock commission data */}
+      {execModalOpen && (
+        <ExecPinModal
+          onClose={() => setExecModalOpen(false)}
+          onSuccess={() => {
+            window.localStorage.setItem('tanta.execMode', '1');
+            setExecMode(true);
+            setExecModalOpen(false);
+          }}
+        />
+      )}
+    </div>
+  );
+}
+
+// ===== Exec Mode Button =====
+// Lock/unlock commission data. Green when unlocked (exec), grey when locked (staff).
+function ExecModeButton({ execMode, onToggle }: { execMode: boolean; onToggle: () => void }) {
+  return (
+    <button
+      onClick={onToggle}
+      className={`px-3 py-2 rounded-lg text-xs font-bold flex items-center gap-2 transition-colors ${
+        execMode
+          ? 'bg-primary text-white hover:opacity-90'
+          : 'bg-surface-container-high text-on-surface-variant hover:bg-surface-container-highest'
+      }`}
+      title={execMode ? 'Executive view (commission data visible) — click to lock' : 'Staff view — click to unlock exec data with PIN'}
+    >
+      <span className="material-symbols-outlined text-sm">{execMode ? 'lock_open' : 'lock'}</span>
+      {execMode ? 'Exec' : 'Staff'}
+    </button>
+  );
+}
+
+// ===== Exec PIN Modal =====
+function ExecPinModal({ onClose, onSuccess }: { onClose: () => void; onSuccess: () => void }) {
+  const [pin, setPin] = useState('');
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState('');
+
+  const submit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!pin) return;
+    setSubmitting(true);
+    setError('');
+    try {
+      const r = await fetch('/api/exec-check', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ pin }),
+      });
+      if (r.ok) {
+        onSuccess();
+      } else {
+        setError('Wrong PIN');
+      }
+    } catch {
+      setError('Network error');
+    }
+    setSubmitting(false);
+  };
+
+  return (
+    <div className="fixed inset-0 bg-black/50 z-[110] flex items-center justify-center" onClick={onClose}>
+      <div className="bg-white rounded-xl w-full max-w-sm p-6 shadow-2xl" onClick={e => e.stopPropagation()}>
+        <div className="flex justify-between items-start mb-4">
+          <div>
+            <h2 className="text-lg font-bold text-on-surface">Executive view</h2>
+            <p className="text-xs text-on-surface-variant mt-1">Enter PIN to show commission data</p>
+          </div>
+          <button onClick={onClose} className="text-2xl text-on-surface-variant hover:text-on-surface leading-none">&times;</button>
+        </div>
+        <form onSubmit={submit}>
+          <input
+            type="password"
+            autoFocus
+            value={pin}
+            onChange={e => setPin(e.target.value)}
+            placeholder="PIN"
+            className="w-full px-4 py-3 border border-surface-container-high rounded-lg text-sm text-on-surface focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary"
+          />
+          {error && <p className="text-xs text-error mt-2">{error}</p>}
+          <button
+            type="submit"
+            disabled={submitting || !pin}
+            className="mt-4 w-full bg-primary text-white py-2.5 rounded-lg text-sm font-bold hover:opacity-90 disabled:opacity-50 transition-opacity"
+          >
+            {submitting ? 'Checking...' : 'Unlock'}
+          </button>
+        </form>
+      </div>
     </div>
   );
 }
