@@ -852,71 +852,98 @@ export default function Dashboard() {
 }
 
 // ===== Trail Sync Button =====
+// Shows last-sync age on the pipeline dashboard. Clicking opens a modal with
+// the exact command to run on the office PC for a manual sync. No longer queues
+// background jobs — Chris removed the 2-min poller that processed them (the
+// flashing PowerShell window was annoying). Daily 4pm Task Scheduler sync + this
+// manual option covers refresh needs.
 function TrailSyncButton() {
-  const [status, setStatus] = useState<'idle' | 'queued' | 'running' | 'success' | 'error'>('idle');
   const [lastSync, setLastSync] = useState<string | null>(null);
+  const [open, setOpen] = useState(false);
+  const [copied, setCopied] = useState(false);
 
   const fetchStatus = useCallback(async () => {
     try {
       const r = await fetch('/api/trail-sync');
       const d = await r.json();
-      const latest = (d.jobs ?? [])[0];
-      if (!latest) return;
-      if (latest.status === 'pending') setStatus('queued');
-      else if (latest.status === 'running') setStatus('running');
-      else if (latest.status === 'failed') setStatus('error');
-      else if (latest.status === 'done') {
-        setStatus('idle');
-        if (latest.finished_at) setLastSync(latest.finished_at);
-      }
+      const latestDone = (d.jobs ?? []).find((j: any) => j.status === 'done');
+      if (latestDone?.finished_at) setLastSync(latestDone.finished_at);
     } catch { /* silent */ }
   }, []);
 
   useEffect(() => {
     fetchStatus();
-    const t = setInterval(fetchStatus, 30_000);
+    const t = setInterval(fetchStatus, 60_000);
     return () => clearInterval(t);
   }, [fetchStatus]);
 
-  const onClick = async () => {
-    setStatus('queued');
+  const cmd = 'cd /c/Users/chris/Documents/tanta-pipeline && npm run trail:sync';
+
+  const onCopy = async () => {
     try {
-      const r = await fetch('/api/trail-sync', { method: 'POST' });
-      if (!r.ok) throw new Error('Queue failed');
-      // Start polling more aggressively for ~3 minutes so the UI updates when the office PC picks it up.
-      let ticks = 0;
-      const t = setInterval(async () => {
-        ticks++;
-        await fetchStatus();
-        if (ticks > 36) clearInterval(t); // 36 * 5s = 3min
-      }, 5_000);
-    } catch (err) {
-      setStatus('error');
-    }
+      await navigator.clipboard.writeText(cmd);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    } catch { /* silent */ }
   };
 
-  const label =
-    status === 'queued'  ? 'Queued...' :
-    status === 'running' ? 'Syncing from office PC...' :
-    status === 'error'   ? 'Sync failed — click to retry' :
-    'Sync from Trail';
-
-  const color =
-    status === 'queued' || status === 'running' ? 'bg-[#EAB308]' :
-    status === 'error'                          ? 'bg-error' :
-                                                  'bg-secondary';
-
-  const tooltip = lastSync ? `Last synced ${new Date(lastSync).toLocaleString('en-NZ', { hour: '2-digit', minute: '2-digit', day: 'numeric', month: 'short' })}` : 'Not yet synced';
+  const ageLabel = (() => {
+    if (!lastSync) return 'Never';
+    const mins = Math.floor((Date.now() - new Date(lastSync).getTime()) / 60000);
+    if (mins < 1) return 'just now';
+    if (mins < 60) return `${mins}m ago`;
+    if (mins < 1440) return `${Math.floor(mins / 60)}h ago`;
+    return `${Math.floor(mins / 1440)}d ago`;
+  })();
 
   return (
-    <button
-      onClick={onClick}
-      disabled={status === 'queued' || status === 'running'}
-      className={`px-3 py-2 rounded-lg text-xs font-bold text-white flex items-center gap-2 ${color} disabled:opacity-75 transition-colors`}
-      title={tooltip}
-    >
-      <span className={`material-symbols-outlined text-sm ${status === 'running' || status === 'queued' ? 'animate-spin' : ''}`}>sync</span>
-      {label}
-    </button>
+    <>
+      <button
+        onClick={() => setOpen(true)}
+        className="px-3 py-2 rounded-lg text-xs font-bold text-white flex items-center gap-2 bg-secondary hover:bg-primary transition-colors"
+        title={lastSync ? `Last synced ${new Date(lastSync).toLocaleString('en-NZ', { hour: '2-digit', minute: '2-digit', day: 'numeric', month: 'short' })}` : 'Never synced'}
+      >
+        <span className="material-symbols-outlined text-sm">sync</span>
+        Last sync: {ageLabel}
+      </button>
+
+      {open && (
+        <div className="fixed inset-0 bg-black/50 z-[100] flex items-center justify-center" onClick={() => setOpen(false)}>
+          <div className="bg-white rounded-xl w-full max-w-lg p-6 shadow-2xl" onClick={e => e.stopPropagation()}>
+            <div className="flex justify-between items-start mb-4">
+              <div>
+                <h2 className="text-lg font-bold text-on-surface">Sync from Trail — manual</h2>
+                <p className="text-xs text-on-surface-variant mt-1">
+                  Last synced: <strong>{lastSync ? new Date(lastSync).toLocaleString('en-NZ', { weekday:'short', day:'numeric', month:'short', hour:'2-digit', minute:'2-digit' }) : 'never'}</strong>
+                </p>
+              </div>
+              <button onClick={() => setOpen(false)} className="text-2xl text-on-surface-variant hover:text-on-surface leading-none">&times;</button>
+            </div>
+
+            <p className="text-sm text-on-surface mb-3">
+              Paste this into <strong>Git Bash</strong> on your office PC. Takes ~60–90 seconds. Hard-refresh this page after it finishes.
+            </p>
+
+            <div className="bg-surface-container-high rounded-lg p-3 font-mono text-xs text-on-surface break-all select-all">
+              {cmd}
+            </div>
+
+            <div className="mt-3 flex gap-2">
+              <button
+                onClick={onCopy}
+                className={`px-3 py-2 rounded-lg text-xs font-bold text-white flex items-center gap-2 transition-colors ${copied ? 'bg-primary' : 'bg-secondary hover:bg-primary'}`}
+              >
+                <span className="material-symbols-outlined text-sm">{copied ? 'check' : 'content_copy'}</span>
+                {copied ? 'Copied' : 'Copy command'}
+              </button>
+            </div>
+
+            <p className="text-[10px] text-on-surface-variant mt-4">
+              Your PC also runs a full sync automatically at <strong>4pm NZ every day</strong>. Skip this if you're happy with that cadence.
+            </p>
+          </div>
+        </div>
+      )}
+    </>
   );
 }

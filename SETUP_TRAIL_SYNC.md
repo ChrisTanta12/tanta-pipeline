@@ -57,8 +57,13 @@ wait ~2 minutes, and watch it re-sync.
 
 ## 4. Schedule it to run automatically
 
-Two Task Scheduler entries: a daily 4pm full sync, and a lightweight every-2-min
-poller that only runs if the dashboard has queued an on-demand sync.
+One Task Scheduler entry: a daily 4pm full sync.
+
+> **History note.** There used to be a second every-2-min task that processed
+> the dashboard's "Sync from Trail" button, but the PowerShell window flashed
+> every 2 minutes and was more annoying than useful. It's been removed. The
+> button on the dashboard now opens a modal with the manual sync command you
+> paste into Git Bash — see §5 below.
 
 ### 4a. Daily 4pm sync
 
@@ -95,40 +100,29 @@ poller that only runs if the dashboard has queued an on-demand sync.
 8. **OK** → it'll prompt for the account password for the "Run whether logged
    on or not" mode.
 
-### 4b. Every-2-min on-demand check
+## 5. Manual sync when you need fresher data
 
-Same wizard with different values:
+The dashboard's top bar has a **Last sync: Nm ago** button. Click it and a
+modal shows the exact command to paste into Git Bash on your office PC:
 
-1. **Create Task…**
-2. **General**:
-   - Name: `Tanta — Trail Sync (On-demand check)`
-   - **Run only when user is logged on** (fine for this — this is the dashboard
-     button handler, which requires your PC to be awake anyway).
-3. **Triggers** → **New…**:
-   - Begin: **On a schedule**
-   - **Daily**, start at today's date at 00:01:00
-   - **Repeat task every: 2 minutes for a duration of 1 day**
-   - Tick **Enabled**.
-4. **Actions** → **New…**:
-   - Program/script: `C:\Program Files\nodejs\npm.cmd`
-   - Add arguments: `run trail:sync -- --check`
-   - Start in: `C:\Users\chris\Documents\tanta-pipeline`
-5. **Settings**:
-   - Tick **If the task is already running, the following rule applies**:
-     **Do not start a new instance** (prevents pile-ups).
-6. **OK**.
+```bash
+cd /c/Users/chris/Documents/tanta-pipeline && npm run trail:sync
+```
 
-The `--check` mode exits in under a second if there's nothing pending, so
-running it every 2 minutes is cheap.
+Takes 60–90 seconds. Hard-refresh the dashboard after it finishes.
 
-## 5. Verify
+### Why the button doesn't run the sync for you
 
-Back on the dashboard:
+Because Trail IP-whitelists your office IP — the sync has to originate from
+that machine. Vercel functions have ephemeral IPs and get blocked. So the
+button's role is: show you the current data freshness + hand you the exact
+command to refresh.
 
-1. Click the **Sync from Trail** button in the top bar.
-2. Within 2 minutes the button should turn yellow with "Syncing from office
-   PC..." and then back to default with a tooltip showing the last-synced time.
-3. Confirm the numbers on the dashboard update.
+### Verify after first setup
+
+1. After the migrate+seed and first `npm run trail:sync`, open the dashboard
+2. Top-bar button should read `Last sync: just now`
+3. Confirm the pipeline cards are populated with real deals
 
 ## Troubleshooting
 
