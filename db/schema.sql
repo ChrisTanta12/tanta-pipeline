@@ -62,3 +62,33 @@ CREATE TABLE IF NOT EXISTS trail_sync_jobs (
 
 CREATE INDEX IF NOT EXISTS trail_sync_jobs_pending ON trail_sync_jobs (status, requested_at) WHERE status = 'pending';
 CREATE INDEX IF NOT EXISTS trail_sync_jobs_recent ON trail_sync_jobs (requested_at DESC);
+
+-- Full stage-history log per opportunity. One row per stage "visit".
+-- Trail's API doesn't expose when a deal entered its current stage (modifiedTimestamp
+-- resets on ANY edit), so we track it ourselves during sync.
+--
+-- Semantics:
+--   entered_at    — when the opp entered this stage
+--   left_at       — when the opp left the stage; NULL = currently in this stage
+--
+-- If a deal moves Stage A → B → back to A, you get THREE rows:
+--   row 1: stage A, entered=T0, left=T1
+--   row 2: stage B, entered=T1, left=T2
+--   row 3: stage A, entered=T2, left=NULL   ← current
+-- "Days in current stage A" = row1 duration + row3 duration (cumulative).
+CREATE TABLE IF NOT EXISTS opportunity_stage_history (
+  opportunity_id  BIGINT NOT NULL,
+  stage_id        BIGINT NOT NULL,
+  stage_name      TEXT,
+  entered_at      TIMESTAMPTZ NOT NULL,
+  left_at         TIMESTAMPTZ,
+  PRIMARY KEY (opportunity_id, entered_at)
+);
+
+-- Fast lookup of "what stage is this opp currently in" and "when did it enter".
+CREATE INDEX IF NOT EXISTS opportunity_stage_history_current
+  ON opportunity_stage_history (opportunity_id)
+  WHERE left_at IS NULL;
+
+CREATE INDEX IF NOT EXISTS opportunity_stage_history_stage
+  ON opportunity_stage_history (opportunity_id, stage_id);

@@ -368,10 +368,17 @@ export default function Dashboard() {
     const pendingCommission = upcoming.reduce((s, o) => s + getCommission(o), 0);
 
     // Deal ageing
+    // Deal Ageing — CUMULATIVE days in the current stage across all past
+    // visits to that stage (so a deal that moved A → B → back to A keeps
+    // counting its original A time). Populated by the office-side trail-sync
+    // into the opportunity_stage_history table; exposed via the API as
+    // daysInCurrentStage. Falls back to daysSince(createdTimestamp) if no
+    // tracking data yet (new deals between syncs).
     const ageByStage: Record<string, number[]> = {};
     open.forEach(o => {
       const stage = displayStage(o.stageName);
-      const age = daysSince(o.createdTimestamp);
+      const tracked = (o as any).daysInCurrentStage;
+      const age = typeof tracked === 'number' ? Math.floor(tracked) : daysSince(o.createdTimestamp);
       if (!ageByStage[stage]) ageByStage[stage] = [];
       ageByStage[stage].push(age);
     });

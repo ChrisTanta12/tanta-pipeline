@@ -77,6 +77,8 @@ async function main() {
 
     await upsertEntities('opportunity', opps, 'opportunityId');
     await upsertEntities('pipeline', pipelines, 'pipelineId');
+    const stageChanges = await trackStageChanges(opps);
+    console.log(`[trail-sync]   ${stageChanges} stage changes detected this run`);
 
     await sql`
       UPDATE trail_sync_jobs
@@ -158,6 +160,76 @@ function derivePipelinesFromOpportunities(opps: any[]): any[] {
     pipelineName: p.pipelineName,
     stages: Array.from(p.stages.values()),
   }));
+}
+
+/**
+ * Maintains opportunity_stage_history — append-only log of every stage visit
+ * per opportunity. Lets the dashboard compute "cumulative days in current
+ * stage across all visits" (so a deal that moved A → B → back to A continues
+ * its A counter rather than resetting).
+ *
+ * For each opp we look at the currently-open row (left_at IS NULL):
+ *   - No row yet → insert with entered_at = modifiedTimestamp (best
+ *     approximation on first observation — upper bound on stage age).
+ *   - Open row, same stage_id → nothing to do.
+ *   - Open row, different stage_id → close it (left_at = NOW) and insert a
+ *     new open row for the new stage.
+ *
+ * Returns the count of stage transitions detected this run.
+ */
+async function trackStageChanges(opps: any[]): Promise<number> {
+  if (opps.length === 0) return 0;
+  let changes = 0;
+  const CHUNK = 50;
+  for (let i = 0; i < opps.length; i += CHUNK) {
+    const slice = opps.slice(i, i + CHUNK);
+    const results = await Promise.all(slice.map(async o => {
+      if (o.opportunityId === undefined || o.opportunityId === null || o.stageId === undefined || o.stageId === null) {
+        return false;
+      }
+
+      // Find the currently-open stage row for this opportunity.
+      const cur = await sql<{ stage_id: string | number; entered_at: string }>`
+        SELECT stage_id, entered_at
+        FROM opportunity_stage_history
+        WHERE opportunity_id = ${o.opportunityId} AND left_at IS NULL
+        LIMIT 1
+      `;
+
+      const currentStageId = cur.rows[0]?.stage_id !== undefined
+        ? Number(cur.rows[0].stage_id)
+        : null;
+
+      if (currentStageId === null) {
+        // First time we've ever seen this opp — seed with modifiedTimestamp.
+        const seed = o.modifiedTimestamp ?? o.createdTimestamp ?? new Date().toISOString();
+        await sql`
+          INSERT INTO opportunity_stage_history (opportunity_id, stage_id, stage_name, entered_at, left_at)
+          VALUES (${o.opportunityId}, ${o.stageId}, ${o.stageName ?? ''}, ${seed}, NULL)
+          ON CONFLICT (opportunity_id, entered_at) DO NOTHING
+        `;
+        return false; // not a detected transition — just initial observation
+      }
+
+      if (currentStageId === Number(o.stageId)) {
+        return false; // no change
+      }
+
+      // Stage has moved — close the current row, open a new one.
+      await sql`
+        UPDATE opportunity_stage_history
+        SET left_at = NOW()
+        WHERE opportunity_id = ${o.opportunityId} AND left_at IS NULL
+      `;
+      await sql`
+        INSERT INTO opportunity_stage_history (opportunity_id, stage_id, stage_name, entered_at, left_at)
+        VALUES (${o.opportunityId}, ${o.stageId}, ${o.stageName ?? ''}, NOW(), NULL)
+      `;
+      return true;
+    }));
+    changes += results.filter(Boolean).length;
+  }
+  return changes;
 }
 
 async function upsertEntities(kind: 'opportunity' | 'pipeline', records: any[], idField: string) {
