@@ -91,11 +91,12 @@ const EXCLUDED_ADVISERS = new Set<string>([
 const INCLUDED_PIPELINE = 'Mortgage Advice';
 
 // Stage definitions
-const PIPELINE_STAGES = ['Opportunity', 'Submitted', 'PreApproval', 'Unconditional'];
+const PIPELINE_STAGES = ['Opportunity', 'Submitted', 'PreApproval', 'Unconditional', 'BuildContract'];
 const COMPLETED_STAGES = ['Lost', 'Settled'];
 const STAGE_COLORS: Record<string, string> = {
   Lost: 'bg-error', Settled: 'bg-primary', Opportunity: 'bg-[#EAB308]',
   Submitted: 'bg-secondary', PreApproval: 'bg-[#84CC16]', Unconditional: 'bg-surface-tint',
+  BuildContract: 'bg-[#F97316]', // orange — between unconditional and settled
   'Book Strategy Session': 'bg-[#EAB308]', 'Deal Submitted': 'bg-secondary',
   'Conditional Approval': 'bg-[#84CC16]', 'House Under Contract': 'bg-surface-tint',
   'Loan Settled': 'bg-primary', 'Commission Received': 'bg-primary',
@@ -143,7 +144,11 @@ function displayStage(s: string): string {
   const n = s.toLowerCase().replace(/\s+/g, ' ').trim();
 
   // Longer/specific matches first so "Book Strategy Session" doesn't collide
-  // with a future "Strategy Session Scheduled" check.
+  // with a future "Strategy Session Scheduled" check. Same for the two build
+  // contract stages — "in progress build contract" must be checked before
+  // "build contract" otherwise both would route to BuildContract.
+  if (n.includes('in progress build contract'))      return 'Settled';
+  if (n.includes('build contract not started'))      return 'BuildContract';
   if (n.includes('loan structure meeting'))          return 'Unconditional';
   if (n.includes('preparing bank approval'))         return 'Opportunity';
   if (n.includes('book strategy session'))           return 'Opportunity';
@@ -256,7 +261,7 @@ export default function Dashboard() {
 
   // Only these stages from the displayStage() mapping count toward the main
   // pipeline metrics.
-  const MAPPED_BUCKETS = new Set(['Opportunity', 'Submitted', 'PreApproval', 'Unconditional', 'Settled', 'Lost']);
+  const MAPPED_BUCKETS = new Set(['Opportunity', 'Submitted', 'PreApproval', 'Unconditional', 'BuildContract', 'Settled', 'Lost']);
   const isMapped = (stageName?: string) => MAPPED_BUCKETS.has(displayStage(stageName ?? ''));
 
   const filtered = useMemo(() => baseOpps.filter(o => {
@@ -614,9 +619,12 @@ export default function Dashboard() {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-surface-container-low">
-                  {['Lost', 'Settled', 'Opportunity', 'Submitted', 'PreApproval', 'Unconditional'].map(stage => {
+                  {['Lost', 'Settled', 'Opportunity', 'Submitted', 'PreApproval', 'Unconditional', 'BuildContract'].map(stage => {
                     const data = metrics.stageBreakdown[stage] || { count: 0, value: 0 };
-                    const label = stage === 'Settled' ? 'Settled (YTD)' : stage;
+                    const label =
+                      stage === 'Settled' ? 'Settled (YTD)' :
+                      stage === 'BuildContract' ? 'Build Contract' :
+                      stage;
                     return (
                       <tr key={stage} className="hover:bg-surface-bright">
                         <td className="py-3 flex items-center gap-2">
@@ -669,7 +677,8 @@ export default function Dashboard() {
                     .map(([stage, data]) => {
                       const w = metrics.inProgress > 0 ? (data.count / metrics.inProgress) * 100 : 0;
                       const colors: Record<string, string> = {
-                        Opportunity: '#EAB308', Submitted: '#2b6486', PreApproval: '#84CC16', Unconditional: '#00658c',
+                        Opportunity: '#EAB308', Submitted: '#2b6486', PreApproval: '#84CC16',
+                        Unconditional: '#00658c', BuildContract: '#F97316',
                       };
                       return <div key={stage} style={{ width: `${w}%`, backgroundColor: colors[stage] || '#999' }} />;
                     })}
