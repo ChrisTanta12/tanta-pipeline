@@ -76,6 +76,20 @@ function pctNum(num: number, denom: number): number {
   return Math.round((num / denom) * 100);
 }
 
+// Advisers whose deals should NOT appear in dashboard metrics — usually ex-staff
+// whose open opportunities haven't been reassigned yet. Edit this list when
+// someone joins or leaves. Matched on exact adviserName.
+const EXCLUDED_ADVISERS = new Set<string>([
+  'Aaron Cattell',
+  'Alexey Papyshev',
+  'Luke Stockman',
+]);
+
+// Only count opportunities in this Trail pipeline. Everything else (Mortgage
+// Servicing, Mortgage Prospecting, Insurance Advice, KiwiSaver, etc.) is
+// excluded from all dashboard metrics.
+const INCLUDED_PIPELINE = 'Mortgage Advice';
+
 // Stage definitions
 const PIPELINE_STAGES = ['Opportunity', 'Submitted', 'PreApproval', 'Unconditional'];
 const COMPLETED_STAGES = ['Lost', 'Settled'];
@@ -226,30 +240,38 @@ export default function Dashboard() {
 
   useEffect(() => { fetchData(); }, [fetchData]);
 
+  // Base universe for the whole dashboard: Mortgage Advice pipeline only,
+  // active advisers only (EXCLUDED_ADVISERS list filters out ex-staff whose
+  // unassigned deals would otherwise skew the metrics). Everything downstream
+  // — dropdowns, headline tiles, tables — operates on this filtered set.
+  const baseOpps = useMemo(() => allOpps.filter(o => {
+    if (EXCLUDED_ADVISERS.has(o.adviserName || '')) return false;
+    if (o.pipelineName !== INCLUDED_PIPELINE) return false;
+    return true;
+  }), [allOpps]);
+
   // Derived data
-  const pipelines = useMemo(() => [...new Set(allOpps.map(o => o.pipelineName).filter(Boolean))].sort(), [allOpps]);
-  const advisers = useMemo(() => [...new Set(allOpps.map(o => o.adviserName).filter(Boolean))].sort(), [allOpps]);
+  const pipelines = useMemo(() => [...new Set(baseOpps.map(o => o.pipelineName).filter(Boolean))].sort(), [baseOpps]);
+  const advisers = useMemo(() => [...new Set(baseOpps.map(o => o.adviserName).filter(Boolean))].sort(), [baseOpps]);
 
   // Only these stages from the displayStage() mapping count toward the main
-  // pipeline metrics. Anything else (Mortgage Servicing, Prospecting, Insurance,
-  // KiwiSaver, etc.) is excluded from "Deals in Progress", "Active Pipeline $$$",
-  // monthly settlements/submissions and so on.
+  // pipeline metrics.
   const MAPPED_BUCKETS = new Set(['Opportunity', 'Submitted', 'PreApproval', 'Unconditional', 'Settled', 'Lost']);
   const isMapped = (stageName?: string) => MAPPED_BUCKETS.has(displayStage(stageName ?? ''));
 
-  const filtered = useMemo(() => allOpps.filter(o => {
+  const filtered = useMemo(() => baseOpps.filter(o => {
     if (filterPipeline !== 'all' && o.pipelineName !== filterPipeline) return false;
     if (filterAdviser !== 'all' && o.adviserName !== filterAdviser) return false;
     if (filterStatus !== 'all' && o.status !== filterStatus) return false;
     if (searchText && !(o.profileName || '').toLowerCase().includes(searchText.toLowerCase())) return false;
     return true;
-  }), [allOpps, filterPipeline, filterAdviser, filterStatus, searchText]);
+  }), [baseOpps, filterPipeline, filterAdviser, filterStatus, searchText]);
 
   // ===== Computed Metrics =====
   const metrics = useMemo(() => {
     // Restrict to Mortgage-Advice-bucket deals only for headline metrics.
     const mappedFiltered = filtered.filter(o => isMapped(o.stageName));
-    const mappedAll = allOpps.filter(o => isMapped(o.stageName));
+    const mappedAll = baseOpps.filter(o => isMapped(o.stageName));
 
     const open = mappedFiltered.filter(o => o.status === 'Open');
     const allForPipeline = mappedAll; // Use all mapped deals for YTD calcs regardless of filter
@@ -283,10 +305,13 @@ export default function Dashboard() {
     const ytdNew = allForPipeline.filter(o => isThisYear(o.createdTimestamp));
     const ytdNewValue = ytdNew.reduce((s, o) => s + numVal(o.value), 0);
 
-    // Pipeline breakdown by stage (only mapped deals)
+    // Pipeline breakdown by stage (only mapped deals).
+    // The 'Settled' bucket is scoped to this calendar year only — Tanta has years
+    // of historical closed deals and Chris only wants the current-year number here.
     const stageBreakdown: Record<string, { count: number; value: number }> = {};
     mappedFiltered.forEach(o => {
       const stage = displayStage(o.stageName);
+      if (stage === 'Settled' && !isThisYear(o.closedDate || o.modifiedTimestamp)) return;
       if (!stageBreakdown[stage]) stageBreakdown[stage] = { count: 0, value: 0 };
       stageBreakdown[stage].count++;
       stageBreakdown[stage].value += numVal(o.value);
@@ -297,9 +322,17 @@ export default function Dashboard() {
     const inProgress = open.length;
     const completed = mappedFiltered.filter(o => o.status === 'Closed' || o.status === 'Lost').length;
 
-    // Upcoming settlements
+    // Upcoming settlements — only deals whose expected settlement is today or in
+    // the future. Past-dated ones are almost always data leftovers (deal settled
+    // but not yet moved into the Settled stage) and they were dominating the list
+    // because the old daysUntil() clamped past dates to 0.
+    const now = Date.now();
     const upcoming = open
-      .filter(o => o.mortgageApplication?.expectedSettlementDate)
+      .filter(o => {
+        const d = o.mortgageApplication?.expectedSettlementDate;
+        if (!d) return false;
+        return new Date(d).getTime() >= now - 86400000; // allow anything from yesterday onwards
+      })
       .map(o => ({
         ...o,
         daysAway: daysUntil(o.mortgageApplication?.expectedSettlementDate),
@@ -568,11 +601,12 @@ export default function Dashboard() {
                 <tbody className="divide-y divide-surface-container-low">
                   {['Lost', 'Settled', 'Opportunity', 'Submitted', 'PreApproval', 'Unconditional'].map(stage => {
                     const data = metrics.stageBreakdown[stage] || { count: 0, value: 0 };
+                    const label = stage === 'Settled' ? 'Settled (YTD)' : stage;
                     return (
                       <tr key={stage} className="hover:bg-surface-bright">
                         <td className="py-3 flex items-center gap-2">
                           <span className={`w-2 h-2 rounded-full ${STAGE_COLORS[stage] || 'bg-gray-400'}`} />
-                          {stage}
+                          {label}
                         </td>
                         <td className="py-3 text-center">{data.count}</td>
                         <td className="py-3 text-right font-medium">{fmtCurrency(data.value)}</td>
