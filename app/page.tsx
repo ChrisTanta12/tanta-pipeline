@@ -276,16 +276,22 @@ export default function Dashboard() {
     const open = mappedFiltered.filter(o => o.status === 'Open');
     const allForPipeline = mappedAll; // Use all mapped deals for YTD calcs regardless of filter
 
-    // Monthly settlements — any deal whose mapped bucket is 'Settled'
+    // All three "monthly" tiles are strictly this-calendar-year AND this-calendar-month.
+    // isThisMonth() already checks both month AND year, so no prior-year data can leak in.
+    // No more OR-fallbacks onto expectedSettlementDate or status=Closed that could drag in
+    // closed-years-ago deals whose settlement date happens to land this month.
+
+    // Monthly settlements — deal currently in Settled bucket, closed this month
     const monthlySettled = allForPipeline.filter(o =>
-      (displayStage(o.stageName) === 'Settled' || o.status === 'Closed') &&
-      (isThisMonth(o.closedDate) || isThisMonth(o.mortgageApplication?.expectedSettlementDate))
+      displayStage(o.stageName) === 'Settled' &&
+      isThisMonth(o.closedDate || o.modifiedTimestamp)
     );
     const monthlySettledValue = monthlySettled.reduce((s, o) => s + numVal(o.value), 0);
 
-    // Monthly submissions — deals currently in the 'Submitted' bucket, modified this month
+    // Monthly submissions — deal currently in Submitted bucket, modified this month
     const monthlySubmitted = allForPipeline.filter(o =>
-      displayStage(o.stageName) === 'Submitted' && isThisMonth(o.modifiedTimestamp || o.createdTimestamp)
+      displayStage(o.stageName) === 'Submitted' &&
+      isThisMonth(o.modifiedTimestamp || o.createdTimestamp)
     );
     const monthlySubmittedValue = monthlySubmitted.reduce((s, o) => s + numVal(o.value), 0);
 
@@ -293,13 +299,15 @@ export default function Dashboard() {
     const monthlyNew = allForPipeline.filter(o => isThisMonth(o.createdTimestamp));
     const monthlyNewValue = monthlyNew.reduce((s, o) => s + numVal(o.value), 0);
 
-    // YTD figures
+    // YTD figures — same tightening, drop the OR-status=Closed fallback
     const ytdSettled = allForPipeline.filter(o =>
-      (displayStage(o.stageName) === 'Settled' || o.status === 'Closed') && isThisYear(o.closedDate)
+      displayStage(o.stageName) === 'Settled' &&
+      isThisYear(o.closedDate || o.modifiedTimestamp)
     );
     const ytdSettledValue = ytdSettled.reduce((s, o) => s + numVal(o.value), 0);
     const ytdSubmitted = allForPipeline.filter(o =>
-      displayStage(o.stageName) === 'Submitted' && isThisYear(o.createdTimestamp)
+      displayStage(o.stageName) === 'Submitted' &&
+      isThisYear(o.modifiedTimestamp || o.createdTimestamp)
     );
     const ytdSubmittedValue = ytdSubmitted.reduce((s, o) => s + numVal(o.value), 0);
     const ytdNew = allForPipeline.filter(o => isThisYear(o.createdTimestamp));
