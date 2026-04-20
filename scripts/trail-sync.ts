@@ -80,12 +80,24 @@ async function main() {
     const stageChanges = await trackStageChanges(opps);
     console.log(`[trail-sync]   ${stageChanges} stage changes detected this run`);
 
+    // Profiles — paginated list, then upsert rank/status/full body. Separate
+    // try/catch so profile-sync failure doesn't kill the whole job.
+    let profileCount = 0;
+    try {
+      const profiles = await fetchAllProfiles();
+      await upsertProfiles(profiles);
+      profileCount = profiles.length;
+      console.log(`[trail-sync]   profiles synced: ${profileCount}`);
+    } catch (err: any) {
+      console.warn(`[trail-sync]   profile sync failed (continuing): ${err.message}`);
+    }
+
     await sql`
       UPDATE trail_sync_jobs
       SET status='done', finished_at=NOW(), opportunities=${opps.length}, pipelines=${pipelines.length}
       WHERE id=${jobId}
     `;
-    console.log(`[trail-sync] ✓ done — ${opps.length} opportunities, ${pipelines.length} pipelines`);
+    console.log(`[trail-sync] ✓ done — ${opps.length} opportunities, ${pipelines.length} pipelines, ${profileCount} profiles`);
   } catch (err: any) {
     await sql`
       UPDATE trail_sync_jobs
@@ -134,6 +146,33 @@ async function fetchAllOpportunities(): Promise<any[]> {
   // Use the plain list endpoint. Trail's /opportunities/search requires a non-empty
   // searchString; /opportunities accepts page+pageSize and returns everything.
   return fetchPaginated('opportunities', '/opportunities');
+}
+
+async function fetchAllProfiles(): Promise<any[]> {
+  // Profile list endpoint — assumes same pagination/shape as opportunities.
+  // Returns the full profile record including profileRank, profileStatus, contacts, etc.
+  return fetchPaginated('profiles', '/profiles');
+}
+
+async function upsertProfiles(profiles: any[]) {
+  if (profiles.length === 0) return;
+  const CHUNK = 200;
+  for (let i = 0; i < profiles.length; i += CHUNK) {
+    const slice = profiles.slice(i, i + CHUNK);
+    await Promise.all(slice.map(p => {
+      const id = p.profileId;
+      if (!id || typeof id !== 'string') return Promise.resolve();
+      return sql`
+        INSERT INTO trail_profiles (profile_id, profile_rank, profile_status, data, synced_at)
+        VALUES (${id}, ${p.profileRank ?? null}, ${p.profileStatus ?? null}, ${JSON.stringify(p)}::jsonb, NOW())
+        ON CONFLICT (profile_id) DO UPDATE
+          SET profile_rank  = EXCLUDED.profile_rank,
+              profile_status = EXCLUDED.profile_status,
+              data           = EXCLUDED.data,
+              synced_at      = NOW()
+      `;
+    }));
+  }
 }
 
 /**

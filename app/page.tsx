@@ -34,6 +34,8 @@ interface Opportunity {
   clientInterview?: ClientInterview;
   daysInCurrentStage?: number | null;
   stageEnteredAt?: string | null;
+  profileRank?: string | null;
+  profileStatus?: string | null;
 }
 
 // ===== Helpers =====
@@ -145,6 +147,28 @@ function getCommission(opp: { value: number | string; mortgageApplication?: Mort
 // count toward Opportunity/Submitted/PreApproval/Unconditional/BuildContract/
 // Settled/Lost buckets. If a new stage appears with zero counts in the table,
 // it's unmapped — add a new .includes() branch below.
+
+// Client grading colour mapping (Trail profileRank — A is top, D is lowest).
+// Renders as a small square letter badge next to the client name.
+function RankBadge({ rank }: { rank?: string | null }) {
+  if (!rank) return null;
+  const up = rank.toUpperCase();
+  const colour =
+    up === 'A' ? 'bg-green-500 text-white' :
+    up === 'B' ? 'bg-blue-500 text-white' :
+    up === 'C' ? 'bg-amber-500 text-white' :
+    up === 'D' ? 'bg-red-500 text-white' :
+                 'bg-gray-400 text-white';
+  return (
+    <span
+      className={`inline-flex items-center justify-center w-4 h-4 rounded text-[9px] font-black ${colour} flex-shrink-0`}
+      title={`Client grade: ${up}`}
+    >
+      {up}
+    </span>
+  );
+}
+
 function displayStage(s: string): string {
   if (!s) return s;
   const n = s.toLowerCase().replace(/\s+/g, ' ').trim();
@@ -731,7 +755,12 @@ export default function Dashboard() {
                 <tbody className="text-[11px]">
                   {metrics.upcoming.map(o => (
                     <tr key={o.opportunityId} className="hover:bg-surface-bright cursor-pointer" onClick={() => setSelectedOpp(o)}>
-                      <td className="py-3 font-semibold">{(o.profileName || '').split(' ').slice(0, 2).join(' ')}</td>
+                      <td className="py-3 font-semibold">
+                        <span className="inline-flex items-center gap-1.5">
+                          <RankBadge rank={o.profileRank} />
+                          {(o.profileName || '').split(' ').slice(0, 2).join(' ')}
+                        </span>
+                      </td>
                       <td className="py-3 text-right">{fmtCurrency(numVal(o.value))}</td>
                       {execMode && <td className="py-3 text-right text-primary">{fmtCurrency(getCommission(o))}</td>}
                       <td className={`py-3 text-right font-bold ${o.daysAway <= 7 ? 'text-primary' : 'text-on-surface-variant'}`}>{o.daysAway}d</td>
@@ -824,10 +853,55 @@ export default function Dashboard() {
               </table>
             </div>
 
-            {/* Client Grading (placeholder - would need additional data) */}
+            {/* Client Grading — distribution of open-pipeline deals by profileRank */}
             <div className="bg-surface-container-lowest p-6 rounded-xl shadow-md">
               <h3 className="text-sm font-bold text-on-surface tracking-tight uppercase mb-6">Client Grading</h3>
-              <p className="text-xs text-on-surface-variant">Client grading data will be available when Trail adds profile grading to the API. For now, use Trail directly for client grades.</p>
+              {(() => {
+                const counts: Record<string, number> = {};
+                metrics.upcoming.forEach(() => {}); // keep hook stable; iterate real open list below
+                const pool = filtered.filter(o => o.status === 'Open');
+                pool.forEach(o => {
+                  const r = (o.profileRank || '—').toUpperCase();
+                  counts[r] = (counts[r] || 0) + 1;
+                });
+                const total = pool.length;
+                const order = ['A', 'B', 'C', 'D', '—'];
+                const rows = order.filter(k => counts[k]);
+                if (total === 0) return <p className="text-xs text-on-surface-variant">No open deals to grade.</p>;
+                return (
+                  <div className="space-y-3">
+                    {rows.map(k => {
+                      const pctV = Math.round((counts[k] / total) * 100);
+                      return (
+                        <div key={k}>
+                          <div className="flex justify-between text-xs font-bold mb-1.5">
+                            <span className="flex items-center gap-2">
+                              <RankBadge rank={k === '—' ? null : k} />
+                              {k === '—' ? 'Ungraded' : `Grade ${k}`}
+                            </span>
+                            <span className="text-on-surface-variant">{counts[k]} ({pctV}%)</span>
+                          </div>
+                          <div className="h-2 w-full bg-surface-container-high rounded-full overflow-hidden">
+                            <div
+                              className={
+                                k === 'A' ? 'bg-green-500 h-full' :
+                                k === 'B' ? 'bg-blue-500 h-full' :
+                                k === 'C' ? 'bg-amber-500 h-full' :
+                                k === 'D' ? 'bg-red-500 h-full' :
+                                            'bg-gray-400 h-full'
+                              }
+                              style={{ width: `${pctV}%` }}
+                            />
+                          </div>
+                        </div>
+                      );
+                    })}
+                    <p className="text-[10px] text-on-surface-variant mt-4 pt-3 border-t border-surface-container-high">
+                      Based on {total} open deal{total === 1 ? '' : 's'} in the filtered view. Edit grades in Trail.
+                    </p>
+                  </div>
+                );
+              })()}
             </div>
           </div>
         </div>
@@ -913,7 +987,12 @@ export default function Dashboard() {
                           className="hover:bg-surface-bright cursor-pointer"
                           onClick={() => { setSelectedOpp(o); setDrilldown(null); }}
                         >
-                          <td className="py-2 px-6 font-semibold">{o.profileName || '-'}</td>
+                          <td className="py-2 px-6 font-semibold">
+                            <span className="inline-flex items-center gap-1.5">
+                              <RankBadge rank={o.profileRank} />
+                              {o.profileName || '-'}
+                            </span>
+                          </td>
                           <td className="py-2 px-3 text-xs text-on-surface-variant">{o.stageName}</td>
                           <td className="py-2 px-3 text-xs">{o.mortgageApplication?.lender || '-'}</td>
                           <td className="py-2 px-3 text-right">{fmtCurrency(numVal(o.value))}</td>
@@ -934,7 +1013,10 @@ export default function Dashboard() {
         <div className="fixed inset-0 bg-black/50 z-[100] flex items-center justify-center" onClick={() => setSelectedOpp(null)}>
           <div className="bg-white rounded-xl w-full max-w-lg max-h-[80vh] overflow-y-auto p-7 shadow-2xl" onClick={e => e.stopPropagation()}>
             <button onClick={() => setSelectedOpp(null)} className="float-right text-xl text-on-surface-variant hover:text-on-surface">&times;</button>
-            <h2 className="text-lg font-bold mb-4">{selectedOpp.profileName}</h2>
+            <h2 className="text-lg font-bold mb-4 flex items-center gap-2">
+              <RankBadge rank={selectedOpp.profileRank} />
+              {selectedOpp.profileName}
+            </h2>
             {[
               { l: 'Status', v: selectedOpp.status },
               { l: 'Pipeline / Stage', v: `${selectedOpp.pipelineName} → ${selectedOpp.stageName}` },

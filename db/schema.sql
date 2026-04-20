@@ -92,3 +92,18 @@ CREATE INDEX IF NOT EXISTS opportunity_stage_history_current
 
 CREATE INDEX IF NOT EXISTS opportunity_stage_history_stage
   ON opportunity_stage_history (opportunity_id, stage_id);
+
+-- Cached client profile data from Trail. Sync pulls /profiles?page=... in bulk
+-- on each run. We denormalise profile_rank and profile_status for fast JOINs
+-- in the /api/opportunities read path, and keep the full profile body in
+-- `data` for anything else we might need later (contacts, profileSource, etc.).
+CREATE TABLE IF NOT EXISTS trail_profiles (
+  profile_id        TEXT PRIMARY KEY,
+  profile_rank      TEXT,
+  profile_status    TEXT,
+  data              JSONB,
+  synced_at         TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS trail_profiles_rank   ON trail_profiles (profile_rank);
+CREATE INDEX IF NOT EXISTS trail_profiles_status ON trail_profiles (profile_status);
