@@ -32,6 +32,17 @@ async function main() {
   if (!TRAIL_API_KEY) throw new Error('TRAIL_API_KEY is not set');
   if (!process.env.POSTGRES_URL) throw new Error('POSTGRES_URL is not set (is .env.local loaded?)');
 
+  // Clean up orphaned 'running' jobs — typically from a previous run that
+  // crashed before it could mark itself done/failed. Anything more than 30 min
+  // old that's still 'running' is stuck and should be marked as failed.
+  await sql`
+    UPDATE trail_sync_jobs
+    SET status = 'failed',
+        finished_at = NOW(),
+        error = COALESCE(error, '') || ' [marked failed by subsequent run — script may have crashed]'
+    WHERE status = 'running' AND started_at < NOW() - INTERVAL '30 minutes'
+  `;
+
   let jobId: number | null = null;
   let requestedBy: 'schedule' | 'manual' | 'startup' = 'schedule';
 
@@ -156,19 +167,24 @@ async function fetchAllProfiles(): Promise<any[]> {
 
 async function upsertProfiles(profiles: any[]) {
   if (profiles.length === 0) return;
-  const CHUNK = 200;
+  // Smaller chunks (was 200, now 50) after a Neon out-of-memory on the first
+  // try — the serverless Postgres connection cache couldn't hold 200 parallel
+  // queries with JSONB payloads. Also: we no longer write the full JSONB body
+  // since nothing reads it. If we ever need contacts/profileSource/etc later,
+  // we can re-add it, but for the current rank-only use case, skipping the
+  // JSONB makes the upsert ~10x lighter.
+  const CHUNK = 50;
   for (let i = 0; i < profiles.length; i += CHUNK) {
     const slice = profiles.slice(i, i + CHUNK);
     await Promise.all(slice.map(p => {
       const id = p.profileId;
       if (!id || typeof id !== 'string') return Promise.resolve();
       return sql`
-        INSERT INTO trail_profiles (profile_id, profile_rank, profile_status, data, synced_at)
-        VALUES (${id}, ${p.profileRank ?? null}, ${p.profileStatus ?? null}, ${JSON.stringify(p)}::jsonb, NOW())
+        INSERT INTO trail_profiles (profile_id, profile_rank, profile_status, synced_at)
+        VALUES (${id}, ${p.profileRank ?? null}, ${p.profileStatus ?? null}, NOW())
         ON CONFLICT (profile_id) DO UPDATE
-          SET profile_rank  = EXCLUDED.profile_rank,
+          SET profile_rank   = EXCLUDED.profile_rank,
               profile_status = EXCLUDED.profile_status,
-              data           = EXCLUDED.data,
               synced_at      = NOW()
       `;
     }));
