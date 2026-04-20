@@ -252,11 +252,15 @@ export default function Dashboard() {
 
   // Base universe for the whole dashboard: Mortgage Advice pipeline only,
   // active advisers only (EXCLUDED_ADVISERS list filters out ex-staff whose
-  // unassigned deals would otherwise skew the metrics). Everything downstream
-  // — dropdowns, headline tiles, tables — operates on this filtered set.
+  // unassigned deals would otherwise skew the metrics), and non-archived
+  // profiles only (archived profiles keep their opportunities with
+  // status='Open' in Trail, so they'd otherwise inflate the active pipeline).
+  // Everything downstream — dropdowns, headline tiles, tables — operates on
+  // this filtered set.
   const baseOpps = useMemo(() => allOpps.filter(o => {
     if (EXCLUDED_ADVISERS.has(o.adviserName || '')) return false;
     if (o.pipelineName !== INCLUDED_PIPELINE) return false;
+    if (o.isProfileArchived === true) return false;
     return true;
   }), [allOpps]);
 
@@ -283,7 +287,16 @@ export default function Dashboard() {
     const mappedFiltered = filtered.filter(o => isMapped(o.stageName));
     const mappedAll = baseOpps.filter(o => isMapped(o.stageName));
 
-    const open = mappedFiltered.filter(o => o.status === 'Open');
+    // "Open" for Deals-in-Progress / Active Pipeline $$$: deals actively being
+    // worked. Excludes Settled and Lost buckets even when status='Open' — deals
+    // in stages like 'Loan Drawn - Awaiting Comms' or 'In Progress Build
+    // Contract' are past the broker-active phase (loan already drawn, deal
+    // essentially done) and shouldn't inflate the pipeline tally.
+    const open = mappedFiltered.filter(o => {
+      if (o.status !== 'Open') return false;
+      const bucket = displayStage(o.stageName);
+      return bucket !== 'Settled' && bucket !== 'Lost';
+    });
     const allForPipeline = mappedAll; // Use all mapped deals for YTD calcs regardless of filter
 
     // All three "monthly" tiles are strictly this-calendar-year AND this-calendar-month.
