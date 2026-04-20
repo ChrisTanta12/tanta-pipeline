@@ -1,9 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { gmailClient, searchLabel, fetchMessage, type BankEmail } from '@/app/lib/gmail';
+import { gmailClient, searchLabel, fetchMessage } from '@/app/lib/gmail';
 import { BANK_LABELS } from '@/app/lib/parsers';
-import { parseImagesWithVision } from '@/app/lib/anthropic';
+import { processEmail } from '@/app/lib/ingest';
 import { mergeBankData, isEmailProcessed, markEmailProcessed, writeLog } from '@/app/lib/db';
-import type { BankData, BankId, IngestionResult } from '@/app/lib/types';
+import type { BankData, IngestionResult } from '@/app/lib/types';
 
 export const dynamic = 'force-dynamic';
 export const maxDuration = 300; // 5 min — vision parsing can be slow
@@ -49,7 +49,10 @@ export async function GET(req: NextRequest) {
           gmailMessageId: email.messageId,
           gmailSubject: email.subject,
           gmailDate: email.date,
-          parser: result.parser,
+          // result.parser may be 'vision+pdf'/'vision+both' which are newer
+          // variants than LogEntry.parser currently enumerates. The underlying
+          // column is plain TEXT so the value is preserved; cast to bridge.
+          parser: result.parser as 'text' | 'vision' | 'manual',
           status: result.status,
           changes: result.changes ?? null,
           error: result.error ?? null,
@@ -86,85 +89,4 @@ export async function GET(req: NextRequest) {
     processed: results.length,
     results,
   });
-}
-
-async function processEmail(
-  bankId: BankId,
-  email: BankEmail,
-  textParser: (e: BankEmail) => Partial<BankData> | null,
-  hasImageContent: boolean,
-): Promise<IngestionResult> {
-  // 1. Try text parser first
-  const textPatch = textParser(email);
-  const textFieldCount = textPatch ? countScalarFields(textPatch) : 0;
-
-  // 2. If the email carries rate-card images AND the text parser found little,
-  //    ask Claude to extract from images.
-  let patch: Partial<BankData> = textPatch ?? {};
-  let parser: 'text' | 'vision' = 'text';
-  let needsReview = false;
-  let error: string | undefined;
-
-  if (hasImageContent && textFieldCount < 3) {
-    const images = email.inlineImages
-      .filter(i => ['image/png', 'image/jpeg', 'image/jpg', 'image/gif', 'image/webp'].includes(i.mimeType))
-      .map(i => ({ mimeType: i.mimeType, data: i.data }));
-
-    if (images.length > 0) {
-      try {
-        const visionResult = await parseImagesWithVision(bankId, images, email.subject);
-        patch = { ...patch, ...visionResult.patch };
-        parser = 'vision';
-        if (visionResult.confidence !== 'high') needsReview = true;
-      } catch (err: any) {
-        error = `Vision parse failed: ${err.message}`;
-        needsReview = true;
-      }
-    } else if (textFieldCount === 0) {
-      needsReview = true;
-    }
-  }
-
-  const status = error
-    ? 'failed'
-    : Object.keys(patch).length === 0
-    ? 'needs_review'
-    : needsReview
-    ? 'needs_review'
-    : 'success';
-
-  return {
-    bankId,
-    messageId: email.messageId,
-    subject: email.subject,
-    date: email.date,
-    parser,
-    status,
-    patch: Object.keys(patch).length ? patch : undefined,
-    changes: summariseChanges(patch),
-    error,
-    needsReview,
-  };
-}
-
-function countScalarFields(patch: Partial<BankData>): number {
-  let n = 0;
-  const walk = (v: unknown) => {
-    if (v === null || v === undefined) return;
-    if (typeof v === 'object' && !Array.isArray(v)) {
-      for (const val of Object.values(v as Record<string, unknown>)) walk(val);
-    } else {
-      n++;
-    }
-  };
-  walk(patch);
-  return n;
-}
-
-function summariseChanges(patch: Partial<BankData>): Record<string, unknown> {
-  const summary: Record<string, unknown> = {};
-  for (const [k, v] of Object.entries(patch)) {
-    summary[k] = typeof v === 'object' ? Object.keys(v ?? {}) : v;
-  }
-  return summary;
 }
