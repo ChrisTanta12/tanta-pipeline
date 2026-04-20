@@ -113,3 +113,25 @@ CREATE TABLE IF NOT EXISTS trail_profiles (
 
 CREATE INDEX IF NOT EXISTS trail_profiles_rank   ON trail_profiles (profile_rank);
 CREATE INDEX IF NOT EXISTS trail_profiles_status ON trail_profiles (profile_status);
+
+-- One-time seed of ANZ turnaround values (published only on ANZ's auth-gated
+-- broker portal, so the email-ingest pipeline can't pick them up). Seeded as
+-- `source: 'manual'` so the db-write shim in mergeBankData will preserve them
+-- against future auto ingests. The `turnaround_seeded` marker key prevents
+-- re-seeding when the migration runs again — an admin who later edits via the
+-- TAT override UI won't have their values clobbered.
+UPDATE banks
+SET data = data
+  || jsonb_build_object(
+    'turnaround', jsonb_build_object(
+      'Priority Assessment – Retail',   jsonb_build_object('days', 2, 'updatedAt', '2026-04-21T00:00:00.000Z', 'source', 'manual'),
+      'Priority Assessment – Business', jsonb_build_object('days', 2, 'updatedAt', '2026-04-21T00:00:00.000Z', 'source', 'manual'),
+      'Reassessment',                   jsonb_build_object('days', 2, 'updatedAt', '2026-04-21T00:00:00.000Z', 'source', 'manual'),
+      'Other Assessment – Retail',      jsonb_build_object('days', 4, 'updatedAt', '2026-04-21T00:00:00.000Z', 'source', 'manual'),
+      'Other Assessment – Business',    jsonb_build_object('days', 4, 'updatedAt', '2026-04-21T00:00:00.000Z', 'source', 'manual'),
+      'Loan Maintenance',               jsonb_build_object('days', 3, 'updatedAt', '2026-04-21T00:00:00.000Z', 'source', 'manual'),
+      'Loan Structures & Documents',    jsonb_build_object('days', 1, 'updatedAt', '2026-04-21T00:00:00.000Z', 'source', 'manual')
+    ),
+    'turnaround_seeded', true
+  )
+WHERE id = 'anz' AND NOT (data ? 'turnaround_seeded');

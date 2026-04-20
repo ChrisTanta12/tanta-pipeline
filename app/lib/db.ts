@@ -1,5 +1,5 @@
 import { sql } from '@vercel/postgres';
-import type { BankData, BankId, CardedData } from './types';
+import type { BankData, BankId, CardedData, LegacyTurnaround, TurnaroundEntry, TurnaroundMap } from './types';
 
 export const BANK_IDS: BankId[] = ['anz', 'asb', 'bnz', 'westpac', 'kiwibank'];
 
@@ -58,16 +58,134 @@ export async function upsertBank(id: BankId, name: string, data: BankData): Prom
   `;
 }
 
-export async function mergeBankData(id: BankId, patch: Partial<BankData>): Promise<BankData> {
+/**
+ * Detects the legacy `{ retail, business }` turnaround shape that existing
+ * parsers (app/lib/parsers/asb.ts, bnz.ts) and the vision prompt in
+ * anthropic.ts still produce. Converts it to the new TurnaroundMap with
+ * "Retail" / "Business" keys, stamped as `source: 'auto'`.
+ */
+function isLegacyTurnaround(v: unknown): v is LegacyTurnaround {
+  if (!v || typeof v !== 'object') return false;
+  const o = v as Record<string, unknown>;
+  // Legacy shape has retail/business keys and no entry value shaped like TurnaroundEntry.
+  const hasLegacyKey = 'retail' in o || 'business' in o;
+  if (!hasLegacyKey) return false;
+  // If the value at retail/business looks like a TurnaroundEntry, treat as new shape.
+  for (const k of ['retail', 'business']) {
+    const entry = o[k];
+    if (entry && typeof entry === 'object' && 'days' in (entry as object) && 'source' in (entry as object)) {
+      return false;
+    }
+  }
+  return true;
+}
+
+function normalizeTurnaroundPatch(incoming: unknown, now: string): TurnaroundMap | null {
+  if (!incoming || typeof incoming !== 'object') return null;
+  if (isLegacyTurnaround(incoming)) {
+    const legacy = incoming as LegacyTurnaround;
+    const out: TurnaroundMap = {};
+    if (legacy.retail !== undefined && legacy.retail !== null && (legacy.retail as unknown) !== '') {
+      out['Retail'] = { days: legacy.retail as number | string, updatedAt: now, source: 'auto' };
+    }
+    if (legacy.business !== undefined && legacy.business !== null && (legacy.business as unknown) !== '') {
+      out['Business'] = { days: legacy.business as number | string, updatedAt: now, source: 'auto' };
+    }
+    return out;
+  }
+  // Assume already a TurnaroundMap — coerce any entry lacking updatedAt/source to defaults.
+  const out: TurnaroundMap = {};
+  for (const [key, raw] of Object.entries(incoming as Record<string, unknown>)) {
+    if (!raw || typeof raw !== 'object') continue;
+    const r = raw as Partial<TurnaroundEntry> & { days?: unknown };
+    if (r.days === undefined || r.days === null || r.days === '') continue;
+    out[key] = {
+      days: r.days as number | string,
+      updatedAt: typeof r.updatedAt === 'string' ? r.updatedAt : now,
+      source: r.source === 'manual' ? 'manual' : 'auto',
+    };
+  }
+  return Object.keys(out).length > 0 ? out : null;
+}
+
+/**
+ * Merges a turnaround patch into an existing TurnaroundMap with per-key
+ * precedence: if a key is already present with `source: 'manual'`, it wins
+ * (auto-ingest can't clobber admin overrides). Otherwise the incoming entry
+ * wins.
+ */
+function mergeTurnaroundMaps(existing: TurnaroundMap | undefined, incoming: TurnaroundMap): TurnaroundMap {
+  const out: TurnaroundMap = { ...(existing ?? {}) };
+  for (const [key, entry] of Object.entries(incoming)) {
+    const prior = out[key];
+    if (prior && prior.source === 'manual' && entry.source !== 'manual') {
+      // Manual wins; skip auto overwrite.
+      continue;
+    }
+    out[key] = entry;
+  }
+  return out;
+}
+
+export async function mergeBankData(id: BankId, patch: Partial<BankData> & { turnaround?: unknown }): Promise<BankData> {
+  // Shim the legacy turnaround shape at the db-write layer so existing
+  // parsers/vision prompts keep working without rewrites. Merge per-key
+  // against the existing map so manual overrides survive auto ingests.
+  const patchToWrite: Record<string, unknown> = { ...patch };
+  if (patch.turnaround !== undefined) {
+    const now = new Date().toISOString();
+    const incoming = normalizeTurnaroundPatch(patch.turnaround, now);
+    if (incoming) {
+      const { rows } = await sql<{ data: BankData }>`
+        SELECT data FROM banks WHERE id = ${id}
+      `;
+      // Persisted shape is always TurnaroundMap (any legacy shape from an
+      // earlier write would've been normalised before landing here). Safe to
+      // narrow the union for the merge.
+      const existing = rows[0]?.data?.turnaround as TurnaroundMap | undefined;
+      patchToWrite.turnaround = mergeTurnaroundMaps(existing, incoming);
+    } else {
+      delete patchToWrite.turnaround;
+    }
+  }
+
   const { rows } = await sql<{ data: BankData }>`
     UPDATE banks
-    SET data = data || ${JSON.stringify(patch)}::jsonb,
+    SET data = data || ${JSON.stringify(patchToWrite)}::jsonb,
         updated_at = NOW()
     WHERE id = ${id}
     RETURNING data
   `;
   if (rows.length === 0) throw new Error(`Bank ${id} not found`);
   return rows[0].data;
+}
+
+/**
+ * Upserts a single manual TAT entry for a bank. Used by /api/tat-override.
+ * Always writes `source: 'manual'` and a fresh `updatedAt`. Returns the
+ * full updated turnaround map.
+ */
+export async function upsertTurnaroundOverride(
+  id: BankId,
+  category: string,
+  days: number | string,
+): Promise<TurnaroundMap> {
+  const entry: TurnaroundEntry = {
+    days,
+    updatedAt: new Date().toISOString(),
+    source: 'manual',
+  };
+  const { rows } = await sql<{ data: BankData }>`SELECT data FROM banks WHERE id = ${id}`;
+  if (rows.length === 0) throw new Error(`Bank ${id} not found`);
+  const existing = (rows[0].data?.turnaround ?? {}) as TurnaroundMap;
+  const next: TurnaroundMap = { ...existing, [category]: entry };
+  await sql`
+    UPDATE banks
+    SET data = jsonb_set(data, '{turnaround}', ${JSON.stringify(next)}::jsonb, true),
+        updated_at = NOW()
+    WHERE id = ${id}
+  `;
+  return next;
 }
 
 export async function isEmailProcessed(messageId: string): Promise<boolean> {

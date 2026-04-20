@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
-import type { BankData, BankId, CardedData } from '@/app/lib/types';
+import type { BankData, BankId, CardedData, TurnaroundEntry, TurnaroundMap } from '@/app/lib/types';
 
 type Bank = {
   id: BankId;
@@ -81,6 +81,47 @@ function fmtDate(s?: string): string {
   return new Date(s).toLocaleString('en-NZ', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
 }
 
+/** Short "21 Apr" format used for the TAT updated-at stamp. */
+function fmtShortDate(s?: string): string {
+  if (!s) return '—';
+  return new Date(s).toLocaleString('en-NZ', { day: 'numeric', month: 'short' });
+}
+
+/** True when the stamp is ≥14 days old — used to amber-flag stale TAT values. */
+function isStale(iso: string | undefined, thresholdDays = 14): boolean {
+  if (!iso) return false;
+  const t = new Date(iso).getTime();
+  if (!Number.isFinite(t)) return false;
+  return Date.now() - t > thresholdDays * 24 * 60 * 60 * 1000;
+}
+
+/**
+ * Picks the retail entries out of a TurnaroundMap.
+ * Match rule: key matches /retail/i (case-insensitive). If nothing matches,
+ * falls back to an empty list (the UI shows "—"). Keeps the original keys so
+ * the caller can distinguish e.g. "Priority Retail" from "Other Retail".
+ */
+function pickRetailEntries(tmap: TurnaroundMap | undefined): Array<{ key: string; entry: TurnaroundEntry }> {
+  if (!tmap) return [];
+  const out: Array<{ key: string; entry: TurnaroundEntry }> = [];
+  for (const [key, entry] of Object.entries(tmap)) {
+    if (/retail/i.test(key)) out.push({ key, entry });
+  }
+  return out;
+}
+
+/** Returns the most recent updatedAt across a set of entries. */
+function mostRecentUpdatedAt(entries: Array<{ entry: TurnaroundEntry }>): string | undefined {
+  if (entries.length === 0) return undefined;
+  let latest: string | undefined;
+  for (const { entry } of entries) {
+    if (!latest || new Date(entry.updatedAt).getTime() > new Date(latest).getTime()) {
+      latest = entry.updatedAt;
+    }
+  }
+  return latest;
+}
+
 /** Maps a traffic-light value string to (label, badge colour). */
 function statusFor(trafficLight?: string): { label: string; tone: 'active' | 'warn' | 'critical' } {
   if (!trafficLight) return { label: 'Unknown', tone: 'warn' };
@@ -98,6 +139,18 @@ export default function LendersPage() {
   const [fetchedAt, setFetchedAt] = useState('');
   const [customer, setCustomer] = useState<CustomerType>('new');
   const [rateMode, setRateMode] = useState<RateMode>('fixed');
+
+  // TAT-detail modal state: which bank we're inspecting (if any), and a
+  // session-scoped flag remembering whether the TAT PIN has been unlocked.
+  const [tatDetailBankId, setTatDetailBankId] = useState<BankId | null>(null);
+  const [tatPinUnlocked, setTatPinUnlocked] = useState(false);
+
+  /** Patch a single bank's turnaround map in local state after an override save. */
+  const applyTurnaroundUpdate = useCallback((bankId: BankId, turnaround: TurnaroundMap) => {
+    setBanks(prev => prev.map(b => (
+      b.id === bankId ? { ...b, data: { ...b.data, turnaround } } : b
+    )));
+  }, []);
 
   const fetchData = useCallback(async () => {
     setLoading(true);
@@ -278,12 +331,8 @@ export default function LendersPage() {
                     <Row label="Service Rate">
                       <span className="text-sm font-bold text-[#031f41]">{fmtRate(b.data.serviceRate)}</span>
                     </Row>
-                    <Row label="Turnaround">
-                      <span className="text-sm font-bold text-[#031f41]">
-                        {b.data.turnaround?.retail ?? '—'}<span className="text-[#44474e]"> / </span>
-                        {b.data.turnaround?.business ?? '—'}<span className="text-[#44474e] font-normal text-xs"> days</span>
-                      </span>
-                    </Row>
+                    <TurnaroundRow bank={b} onOpen={() => setTatDetailBankId(b.id)} />
+
                   </div>
                   <div className="mt-6 flex gap-2">
                     <button
@@ -455,11 +504,27 @@ export default function LendersPage() {
                           const r = b.data.rateCard?.[term.key];
                           const lteCmp = compareCell(brokerRateFor(b, term.key, 'lte80'), cardedRateFor(b, term.key, 'lte80'));
                           const gtCmp = compareCell(brokerRateFor(b, term.key, 'gt80'), cardedRateFor(b, term.key, 'gt80'));
-                          const anyDiscrepancy = lteCmp.discrepant || gtCmp.discrepant;
-                          const maxDelta = Math.max(lteCmp.deltaBps ?? 0, gtCmp.deltaBps ?? 0);
+
+                          // 5-year fallback: when the broker doesn't publish a
+                          // 5y rate (common — long rates are rarely in broker
+                          // update emails), show the carded rate as the primary
+                          // number with a muted "(carded)" label. Suppress the
+                          // discrepancy flag for the fallen-back tier because
+                          // broker-vs-carded would trivially "agree" (there's
+                          // no broker side).
+                          const lteFallback = term.key === '5y' && lteCmp.broker === null && lteCmp.carded !== null;
+                          const gtFallback  = term.key === '5y' && gtCmp.broker  === null && gtCmp.carded  !== null;
+                          const lteDisplay = lteFallback ? lteCmp.carded : r?.lte80;
+                          const gtDisplay  = gtFallback  ? gtCmp.carded  : r?.gt80;
+                          const anyDiscrepancy =
+                            (lteCmp.discrepant && !lteFallback) || (gtCmp.discrepant && !gtFallback);
+                          const maxDelta = Math.max(
+                            (lteFallback ? 0 : (lteCmp.deltaBps ?? 0)),
+                            (gtFallback  ? 0 : (gtCmp.deltaBps  ?? 0)),
+                          );
                           const title = [
-                            `lte80: broker=${fmtRate(lteCmp.broker)} carded=${fmtRate(lteCmp.carded)}${lteCmp.deltaBps !== null ? ` Δ${lteCmp.deltaBps}bps` : ''}`,
-                            `gt80: broker=${fmtRate(gtCmp.broker)} carded=${fmtRate(gtCmp.carded)}${gtCmp.deltaBps !== null ? ` Δ${gtCmp.deltaBps}bps` : ''}`,
+                            `lte80: broker=${fmtRate(lteCmp.broker)} carded=${fmtRate(lteCmp.carded)}${lteCmp.deltaBps !== null ? ` Δ${lteCmp.deltaBps}bps` : ''}${lteFallback ? ' (fallback to carded)' : ''}`,
+                            `gt80: broker=${fmtRate(gtCmp.broker)} carded=${fmtRate(gtCmp.carded)}${gtCmp.deltaBps !== null ? ` Δ${gtCmp.deltaBps}bps` : ''}${gtFallback ? ' (fallback to carded)' : ''}`,
                           ].join('\n');
                           return (
                             <td key={`${b.id}-${term.key}`} className="px-8 py-4 text-center border-l border-[#c4c6cf]/5 relative" title={title}>
@@ -470,8 +535,10 @@ export default function LendersPage() {
                                 />
                               )}
                               <div className="flex items-baseline justify-center gap-2">
-                                <span className="text-sm font-extrabold text-[#031f41]">{fmtRate(r?.lte80)}</span>
-                                <span className="text-[10px] text-[#44474e] font-medium">/ {fmtRate(r?.gt80)}</span>
+                                <span className="text-sm font-extrabold text-[#031f41]">{fmtRate(lteDisplay)}</span>
+                                {lteFallback && <span className="text-[8px] text-[#a1a5ab] uppercase tracking-wider">(carded)</span>}
+                                <span className="text-[10px] text-[#44474e] font-medium">/ {fmtRate(gtDisplay)}</span>
+                                {gtFallback && <span className="text-[8px] text-[#a1a5ab] uppercase tracking-wider">(carded)</span>}
                               </div>
                               <div className="flex items-baseline justify-center gap-2 mt-0.5">
                                 <span className="text-[10px] text-[#74777f]">{fmtRate(lteCmp.carded)}</span>
@@ -509,6 +576,21 @@ export default function LendersPage() {
           <span className={`material-symbols-outlined ${loading ? 'animate-spin' : ''}`}>refresh</span>
         </button>
       </div>
+
+      {/* TAT-detail modal — opens when a bank card's Turnaround row is clicked */}
+      {tatDetailBankId && (() => {
+        const b = banks.find(x => x.id === tatDetailBankId);
+        if (!b) return null;
+        return (
+          <TatDetailModal
+            bank={b}
+            pinUnlocked={tatPinUnlocked}
+            onPinUnlock={() => setTatPinUnlocked(true)}
+            onClose={() => setTatDetailBankId(null)}
+            onSaved={(turnaround) => applyTurnaroundUpdate(b.id, turnaround)}
+          />
+        );
+      })()}
     </div>
   );
 }
@@ -557,6 +639,351 @@ function Stat({ label, value }: { label: string; value: string }) {
     <div>
       <p className="text-[9px] uppercase tracking-widest text-[#879ec6] font-bold">{label}</p>
       <p className="text-sm font-bold text-white mt-1">{value}</p>
+    </div>
+  );
+}
+
+/**
+ * The "Turnaround" row on each bank card. Shows ONLY the retail TAT value(s)
+ * — retail being any key whose name matches /retail/i. Clicking anywhere on
+ * the row opens the full TAT-detail modal for that bank.
+ *
+ * Display rules:
+ *   0 retail entries  → "—"
+ *   1 retail entry    → "{days} days" + "updated {shortDate}" stamp
+ *   2+ retail entries → "{a}/{b}{/c...} days" with tooltip naming each key,
+ *                       using the most recent updatedAt stamp
+ * Stale (≥14 days): stamp coloured amber.
+ */
+function TurnaroundRow({ bank, onOpen }: { bank: Bank; onOpen: () => void }) {
+  // Persisted shape is always TurnaroundMap after the db shim normalises on
+  // every write (see mergeBankData in app/lib/db.ts). The type union allows
+  // LegacyTurnaround only to keep parser-write paths typechecked.
+  const tmap = bank.data.turnaround as TurnaroundMap | undefined;
+  const retails = pickRetailEntries(tmap);
+
+  let display: React.ReactNode = '—';
+  let stampIso: string | undefined;
+  let tooltip = 'Click to view all turnaround categories';
+
+  if (retails.length === 1) {
+    const [{ entry }] = retails;
+    display = (
+      <>
+        {String(entry.days)}<span className="text-[#44474e] font-normal text-xs"> days</span>
+      </>
+    );
+    stampIso = entry.updatedAt;
+  } else if (retails.length > 1) {
+    // Sort so "Priority" comes first, then everything else alphabetically.
+    const sorted = [...retails].sort((a, b) => {
+      const ap = /priority/i.test(a.key) ? 0 : 1;
+      const bp = /priority/i.test(b.key) ? 0 : 1;
+      if (ap !== bp) return ap - bp;
+      return a.key.localeCompare(b.key);
+    });
+    display = (
+      <>
+        {sorted.map((r, i) => (
+          <React.Fragment key={r.key}>
+            {i > 0 && <span className="text-[#44474e]"> / </span>}
+            {String(r.entry.days)}
+          </React.Fragment>
+        ))}
+        <span className="text-[#44474e] font-normal text-xs"> days</span>
+      </>
+    );
+    stampIso = mostRecentUpdatedAt(sorted);
+    tooltip = sorted.map(r => `${r.key}: ${r.entry.days} days`).join(' · ');
+  }
+
+  const stale = isStale(stampIso);
+  return (
+    <div
+      className="cursor-pointer group"
+      onClick={onOpen}
+      role="button"
+      tabIndex={0}
+      onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onOpen(); } }}
+      title={tooltip}
+    >
+      <div className="flex justify-between items-center border-b border-[#c4c6cf]/20 pb-2">
+        <span className="text-[11px] text-[#44474e] font-medium group-hover:text-[#031f41]">Turnaround</span>
+        <span className="text-sm font-bold text-[#031f41]">{display}</span>
+      </div>
+      {stampIso && (
+        <div className="flex justify-end pt-1">
+          <span className={`text-[9px] ${stale ? 'text-[#b45309]' : 'text-[#74777f]'}`}>
+            updated {fmtShortDate(stampIso)}
+          </span>
+        </div>
+      )}
+    </div>
+  );
+}
+
+/**
+ * Full-category TAT detail modal. Shows every key in `bank.data.turnaround`
+ * as a table row with an Edit button per row. On Edit, prompts for the PIN
+ * (once per session) via /api/tat-pin. After unlock, the inline input POSTs
+ * to /api/tat-override with the x-tat-pin header; the response returns the
+ * updated turnaround map which the caller patches into local state via
+ * `onSaved`.
+ */
+function TatDetailModal({
+  bank,
+  pinUnlocked,
+  onPinUnlock,
+  onClose,
+  onSaved,
+}: {
+  bank: Bank;
+  pinUnlocked: boolean;
+  onPinUnlock: () => void;
+  onClose: () => void;
+  onSaved: (turnaround: TurnaroundMap) => void;
+}) {
+  // Narrow the union for the modal. Persisted shape is always TurnaroundMap.
+  const tmap = (bank.data.turnaround as TurnaroundMap | undefined) ?? {};
+  const entries = Object.entries(tmap);
+
+  const [pinInput, setPinInput] = useState('');
+  const [pinError, setPinError] = useState('');
+  const [pinChecking, setPinChecking] = useState(false);
+  const [pinValue, setPinValue] = useState<string | null>(null); // remembered for API calls this session
+
+  const [editKey, setEditKey] = useState<string | null>(null);
+  const [editValue, setEditValue] = useState('');
+  const [newKey, setNewKey] = useState('');
+  const [newValue, setNewValue] = useState('');
+  const [saving, setSaving] = useState(false);
+  const [saveError, setSaveError] = useState('');
+
+  const submitPin = async () => {
+    setPinError('');
+    setPinChecking(true);
+    try {
+      const res = await fetch('/api/tat-pin', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ pin: pinInput }),
+      });
+      if (res.ok) {
+        setPinValue(pinInput);
+        onPinUnlock();
+      } else {
+        setPinError('Incorrect PIN');
+      }
+    } catch {
+      setPinError('PIN check failed');
+    }
+    setPinChecking(false);
+  };
+
+  const saveOverride = async (category: string, daysRaw: string) => {
+    setSaveError('');
+    setSaving(true);
+    try {
+      // Pass as a number if it's purely numeric, else as a free-form string
+      // (so "up to 7" style inputs survive).
+      const parsed = daysRaw.trim();
+      const days: number | string =
+        parsed !== '' && Number.isFinite(Number(parsed)) ? Number(parsed) : parsed;
+      const res = await fetch('/api/tat-override', {
+        method: 'POST',
+        headers: {
+          'content-type': 'application/json',
+          'x-tat-pin': pinValue ?? '',
+        },
+        body: JSON.stringify({ bankId: bank.id, category, days }),
+      });
+      const body = await res.json();
+      if (!res.ok) throw new Error(body?.error || 'Save failed');
+      onSaved(body.turnaround as TurnaroundMap);
+      setEditKey(null);
+      setEditValue('');
+      setNewKey('');
+      setNewValue('');
+    } catch (err: any) {
+      setSaveError(err.message || 'Save failed');
+    }
+    setSaving(false);
+  };
+
+  return (
+    <div
+      className="fixed inset-0 z-[100] bg-black/40 flex items-center justify-center p-4"
+      onClick={onClose}
+    >
+      <div
+        className="bg-white rounded-xl shadow-2xl w-full max-w-2xl max-h-[90vh] overflow-hidden flex flex-col"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="px-6 py-4 border-b border-[#e5e8ed] flex items-center justify-between">
+          <div>
+            <p className="text-[10px] font-black uppercase tracking-widest text-[#44474e]">Turnaround Times</p>
+            <h3 className="text-xl font-bold text-[#031f41]" style={{ fontFamily: 'Manrope, sans-serif' }}>{bank.name}</h3>
+          </div>
+          <button
+            onClick={onClose}
+            className="material-symbols-outlined text-[#44474e] hover:bg-[#f1f4f9] p-2 rounded-lg"
+            aria-label="Close"
+          >close</button>
+        </div>
+
+        <div className="flex-1 overflow-auto">
+          {entries.length === 0 ? (
+            <div className="p-8 text-center text-sm text-[#74777f]">
+              No turnaround categories recorded for {bank.name}.
+            </div>
+          ) : (
+            <table className="w-full text-sm">
+              <thead className="bg-[#f7f9fe] text-[10px] font-black uppercase tracking-widest text-[#44474e]">
+                <tr>
+                  <th className="px-6 py-3 text-left">Category</th>
+                  <th className="px-6 py-3 text-left">Days</th>
+                  <th className="px-6 py-3 text-left">Updated</th>
+                  <th className="px-6 py-3 text-left">Source</th>
+                  <th className="px-6 py-3 text-right">&nbsp;</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-[#e5e8ed]">
+                {entries.map(([key, entry]) => {
+                  const isEditing = editKey === key;
+                  const stale = isStale(entry.updatedAt);
+                  return (
+                    <tr key={key}>
+                      <td className="px-6 py-3 font-medium text-[#031f41]">{key}</td>
+                      <td className="px-6 py-3">
+                        {isEditing ? (
+                          <input
+                            autoFocus
+                            type="text"
+                            value={editValue}
+                            onChange={(e) => setEditValue(e.target.value)}
+                            className="border border-[#c4c6cf] rounded px-2 py-1 text-sm w-24"
+                          />
+                        ) : (
+                          <span className="font-bold text-[#031f41]">{String(entry.days)}</span>
+                        )}
+                      </td>
+                      <td className="px-6 py-3">
+                        <span className={stale ? 'text-[#b45309]' : 'text-[#44474e]'}>
+                          {fmtShortDate(entry.updatedAt)}
+                        </span>
+                      </td>
+                      <td className="px-6 py-3">
+                        <span
+                          className={`text-[10px] px-2 py-0.5 rounded font-bold uppercase tracking-wider ${
+                            entry.source === 'manual'
+                              ? 'bg-[#e0e7ff] text-[#3730a3]'
+                              : 'bg-[#f1f4f9] text-[#44474e]'
+                          }`}
+                        >
+                          {entry.source}
+                        </span>
+                      </td>
+                      <td className="px-6 py-3 text-right">
+                        {isEditing ? (
+                          <div className="flex gap-2 justify-end">
+                            <button
+                              onClick={() => saveOverride(key, editValue)}
+                              disabled={saving || !pinUnlocked}
+                              className="px-3 py-1 bg-[#031f41] text-white text-xs rounded disabled:opacity-50"
+                            >
+                              {saving ? 'Saving...' : 'Save'}
+                            </button>
+                            <button
+                              onClick={() => { setEditKey(null); setEditValue(''); }}
+                              className="px-3 py-1 border border-[#c4c6cf] text-xs rounded"
+                            >
+                              Cancel
+                            </button>
+                          </div>
+                        ) : (
+                          <button
+                            onClick={() => { setEditKey(key); setEditValue(String(entry.days)); }}
+                            disabled={!pinUnlocked}
+                            className="text-xs font-bold text-[#2b6485] hover:underline disabled:text-[#a1a5ab] disabled:no-underline"
+                            title={pinUnlocked ? 'Edit this value' : 'Enter the TAT PIN below to enable editing'}
+                          >
+                            Edit
+                          </button>
+                        )}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          )}
+
+          {/* Add-new-category row (visible only when PIN unlocked) */}
+          {pinUnlocked && (
+            <div className="px-6 py-4 border-t border-[#e5e8ed] bg-[#f7f9fe]">
+              <p className="text-[10px] font-black uppercase tracking-widest text-[#44474e] mb-2">Add Category</p>
+              <div className="flex gap-2">
+                <input
+                  type="text"
+                  placeholder="Category (e.g. Priority Retail)"
+                  value={newKey}
+                  onChange={(e) => setNewKey(e.target.value)}
+                  className="flex-1 border border-[#c4c6cf] rounded px-2 py-1 text-sm"
+                />
+                <input
+                  type="text"
+                  placeholder="Days"
+                  value={newValue}
+                  onChange={(e) => setNewValue(e.target.value)}
+                  className="w-24 border border-[#c4c6cf] rounded px-2 py-1 text-sm"
+                />
+                <button
+                  onClick={() => saveOverride(newKey.trim(), newValue)}
+                  disabled={saving || !newKey.trim() || !newValue.trim()}
+                  className="px-3 py-1 bg-[#031f41] text-white text-xs rounded disabled:opacity-50"
+                >
+                  Add
+                </button>
+              </div>
+            </div>
+          )}
+
+          {saveError && (
+            <div className="px-6 py-3 text-xs text-[#93000a] bg-[#ffdad6]">{saveError}</div>
+          )}
+        </div>
+
+        {/* PIN gate footer */}
+        <div className="px-6 py-4 border-t border-[#e5e8ed] bg-white">
+          {pinUnlocked ? (
+            <p className="text-[11px] text-[#2b6485] font-medium">Edit mode unlocked. Manual edits are flagged `manual` and survive auto ingests.</p>
+          ) : (
+            <div>
+              <p className="text-[11px] text-[#44474e] mb-2">Enter the TAT admin PIN to enable editing.</p>
+              <form
+                className="flex gap-2"
+                onSubmit={(e) => { e.preventDefault(); submitPin(); }}
+              >
+                <input
+                  type="password"
+                  value={pinInput}
+                  onChange={(e) => setPinInput(e.target.value)}
+                  placeholder="PIN"
+                  className="flex-1 border border-[#c4c6cf] rounded px-3 py-2 text-sm"
+                />
+                <button
+                  type="submit"
+                  disabled={pinChecking || !pinInput}
+                  className="px-4 py-2 bg-[#031f41] text-white text-xs font-bold rounded disabled:opacity-50"
+                >
+                  {pinChecking ? 'Checking...' : 'Unlock'}
+                </button>
+              </form>
+              {pinError && <p className="text-[11px] text-[#93000a] mt-2">{pinError}</p>}
+            </div>
+          )}
+        </div>
+      </div>
     </div>
   );
 }

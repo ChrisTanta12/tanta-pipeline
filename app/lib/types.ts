@@ -7,6 +7,35 @@ export interface RateRow {
   gt80: RateValue;
 }
 
+/**
+ * A single turnaround-time entry keyed by a bank-defined display label.
+ * Different banks expose different TAT categories (e.g. ANZ has
+ * "Priority Retail"/"Other Retail"/"Reassessment"; ASB has "New Home
+ * Lending Applications"/"Variations"/"Top-ups") so we don't enforce a
+ * fixed schema — just a flexible map.
+ *
+ * `source` distinguishes parser/vision-extracted data from admin-entered
+ * overrides. Manual entries always win over auto ones on merge (see
+ * `mergeBankData` in db.ts) until an admin clears them.
+ */
+export interface TurnaroundEntry {
+  days: number | string;        // "4" or 4 or "up to 7"
+  updatedAt: string;             // ISO timestamp
+  source: 'auto' | 'manual';     // auto = parser/vision; manual = admin-entered
+}
+export type TurnaroundMap = Record<string, TurnaroundEntry>;
+
+/**
+ * Legacy turnaround shape still produced by existing parsers
+ * (app/lib/parsers/*.ts) and the vision prompt in anthropic.ts.
+ * The db-write shim in mergeBankData converts this into a TurnaroundMap
+ * with "Retail" / "Business" keys before persisting.
+ */
+export interface LegacyTurnaround {
+  retail?: number | string;
+  business?: number | string;
+}
+
 export interface BankData {
   name?: string;
   resourcesFolderUrl?: string;
@@ -15,7 +44,12 @@ export interface BankData {
     lte80?: { existing: string; new: string };
     '80_90'?: { existing: string; new: string };
   };
-  turnaround?: { retail: number | string; business: number | string };
+  // Persisted shape is TurnaroundMap (see mergeBankData shim in db.ts). The
+  // LegacyTurnaround arm exists only so existing parsers (app/lib/parsers/*.ts)
+  // and the vision prompt in anthropic.ts — which still write the old
+  // { retail, business } shape — continue to typecheck. Read-paths should
+  // treat this as TurnaroundMap because the shim normalises on every write.
+  turnaround?: TurnaroundMap | LegacyTurnaround;
   cashback?: Record<string, number | string | null>;
   lep?: Record<string, number | string | null>;
   fees?: Record<string, string | number | null>;
@@ -58,7 +92,10 @@ export type IngestionResult = {
   messageId: string;
   subject: string;
   date: string;
-  parser: 'text' | 'vision' | 'manual';
+  // 'vision'       = images only (legacy)
+  // 'vision+pdf'   = PDF attachment(s) only
+  // 'vision+both'  = images + PDF(s) together
+  parser: 'text' | 'vision' | 'vision+pdf' | 'vision+both' | 'manual';
   status: 'success' | 'partial' | 'failed' | 'needs_review';
   patch?: Partial<BankData>;
   changes?: Record<string, unknown>;
