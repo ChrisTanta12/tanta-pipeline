@@ -90,6 +90,13 @@ export async function GET(request: NextRequest) {
       page,
       pageSize,
       lastSync: lastSyncRes.rows[0] ?? null,
+    }, {
+      // Prevent Vercel edge and any intermediate cache from serving stale
+      // responses. `dynamic = 'force-dynamic'` tells Next.js not to cache,
+      // but the edge layer can still cache without this explicit header.
+      // Stale cached responses have previously caused profileRank/daysInCurrentStage
+      // to disappear from the UI even after the code was updated.
+      headers: { 'Cache-Control': 'no-store, no-cache, must-revalidate, max-age=0' },
     });
   } catch (err: any) {
     return NextResponse.json(
