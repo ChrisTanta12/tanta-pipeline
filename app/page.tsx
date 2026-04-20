@@ -129,28 +129,32 @@ function getCommission(opp: { value: number | string; mortgageApplication?: Mort
 }
 
 // Map Trail stage names to dashboard buckets.
-// Trail suffixes stages with "*Broker" / "*Admin" / "* Close Deal" etc., so we
+// Trail suffixes stages with "*Broker" / "*CSM" / "* Close Deal" etc., so we
 // match on keywords rather than exact strings. Double-spaces and case variations
 // also happen; normalise before matching.
 //
-// ⚠️ SANDBOX-SPECIFIC: These stage names are from Trail's beta/sandbox environment.
-// Our live Trail workspace uses a different set of stage names — when we switch
-// TRAIL_BASE_URL to production, revisit this mapping against the live stages
-// returned by /api/pipelines. Fallback `return s` means unknown stages just
-// show their raw name (safe default), but the stage breakdown table will show
-// zero counts until this mapping is updated.
+// Mappings cover Tanta's production Trail Mortgage Advice pipeline (April 2026).
+// Keyword matching via .includes() means the same mappings also still match the
+// older sandbox stage names, so changes to stage names in Trail won't break
+// the dashboard unless the new name contains NONE of the tracked keywords.
+//
+// Fallback `return s` means any unrecognised stage shows its raw name but won't
+// count toward Opportunity/Submitted/PreApproval/Unconditional/BuildContract/
+// Settled/Lost buckets. If a new stage appears with zero counts in the table,
+// it's unmapped — add a new .includes() branch below.
 function displayStage(s: string): string {
   if (!s) return s;
   const n = s.toLowerCase().replace(/\s+/g, ' ').trim();
 
-  // Longer/specific matches first so "Book Strategy Session" doesn't collide
-  // with a future "Strategy Session Scheduled" check. Same for the two build
-  // contract stages — "in progress build contract" must be checked before
-  // "build contract" otherwise both would route to BuildContract.
+  // Longer/specific matches FIRST so e.g. "in progress build contract" wins
+  // before "build contract not started" would also match, and so "book strategy
+  // session" doesn't collide with "strategy session scheduled".
   if (n.includes('in progress build contract'))      return 'Settled';
   if (n.includes('build contract not started'))      return 'BuildContract';
   if (n.includes('loan structure meeting'))          return 'Unconditional';
   if (n.includes('preparing bank approval'))         return 'Opportunity';
+  if (n.includes('finalise application'))            return 'Opportunity';
+  if (n.includes('ff sent'))                         return 'Opportunity';
   if (n.includes('book strategy session'))           return 'Opportunity';
   if (n.includes('strategy session scheduled'))      return 'Opportunity';
   if (n.includes('live') && n.includes('deal only')) return 'Opportunity';
@@ -159,6 +163,7 @@ function displayStage(s: string): string {
   if (n.includes('conditional approval'))            return 'PreApproval';
   if (n.includes('house under contract'))            return 'Unconditional';
   if (n.includes('ready to settle'))                 return 'Unconditional';
+  if (n.includes('loan drawn'))                      return 'Settled';
   if (n.includes('loan settled'))                    return 'Settled';
   if (n.includes('commission received'))             return 'Settled';
   return s;
