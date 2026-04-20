@@ -33,6 +33,35 @@ async function main() {
     ORDER BY n DESC
   `;
   console.log(distinct.rows);
+
+  console.log('\n--- Monique opportunity → profile JOIN test ---');
+  const joinTest = await sql`
+    SELECT t.entity_id              AS opportunity_id,
+           t.data->>'profileName'   AS profile_name,
+           t.data->>'profileId'     AS opp_profileid_raw,
+           LENGTH(t.data->>'profileId') AS opp_profileid_len,
+           p.profile_id             AS matched_profile_id,
+           p.profile_rank           AS matched_rank,
+           p.profile_status         AS matched_status
+    FROM trail_entities t
+    LEFT JOIN trail_profiles p ON p.profile_id = t.data->>'profileId'
+    WHERE t.kind = 'opportunity'
+      AND t.data->>'profileName' ILIKE '%Monique Hiskens%'
+    LIMIT 3
+  `;
+  console.log(joinTest.rows);
+
+  console.log('\n--- Count of opps whose profileId has a match in trail_profiles ---');
+  const matchCount = await sql`
+    SELECT
+      COUNT(*) AS total_opps,
+      COUNT(*) FILTER (WHERE p.profile_id IS NOT NULL) AS with_match,
+      COUNT(*) FILTER (WHERE p.profile_rank IS NOT NULL AND p.profile_rank != '') AS with_grade
+    FROM trail_entities t
+    LEFT JOIN trail_profiles p ON p.profile_id = t.data->>'profileId'
+    WHERE t.kind = 'opportunity'
+  `;
+  console.log(matchCount.rows);
 }
 
 main().catch(e => { console.error(e); process.exit(1); });
