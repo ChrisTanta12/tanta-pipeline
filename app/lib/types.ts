@@ -33,6 +33,26 @@ export interface BankData {
   };
 }
 
+/**
+ * Rate card scraped from interest.co.nz/borrowing. Parallel to BankData.rateCard
+ * but kept separate so broker-special data (BankData) is never overwritten.
+ * Mirrors RateRow keys: lte80 from the "Special LVR under 80%" row,
+ * gt80 from the "Standard" row. `floating` is the "Variable floating" column
+ * from the Standard row. Values are stringified percentages as numbers
+ * (e.g. 4.49) or null when the cell was blank on the source page.
+ */
+export interface CardedRateCard {
+  lte80: Record<string, number | null>;
+  gt80: Record<string, number | null>;
+  floating: number | null;
+}
+
+export type CardedData = {
+  scrapedAt: string;                  // ISO timestamp of the scrape run
+  source: 'interest.co.nz/borrowing';
+  rateCard: CardedRateCard;
+};
+
 export type IngestionResult = {
   bankId: BankId;
   messageId: string;

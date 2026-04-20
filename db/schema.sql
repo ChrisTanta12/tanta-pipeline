@@ -8,6 +8,12 @@ CREATE TABLE IF NOT EXISTS banks (
   updated_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
+-- Carded rates scraped from interest.co.nz/borrowing. Kept in a separate
+-- column so the broker-email ingest (which writes to data) can never clobber
+-- the carded reference, and vice versa. Populated by /api/scrape-interest.
+ALTER TABLE banks ADD COLUMN IF NOT EXISTS carded_data JSONB;
+ALTER TABLE banks ADD COLUMN IF NOT EXISTS carded_updated_at TIMESTAMPTZ;
+
 CREATE TABLE IF NOT EXISTS ingestion_log (
   id                  SERIAL PRIMARY KEY,
   started_at          TIMESTAMPTZ NOT NULL DEFAULT NOW(),

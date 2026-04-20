@@ -1,13 +1,50 @@
 import { sql } from '@vercel/postgres';
-import type { BankData, BankId } from './types';
+import type { BankData, BankId, CardedData } from './types';
 
 export const BANK_IDS: BankId[] = ['anz', 'asb', 'bnz', 'westpac', 'kiwibank'];
 
-export async function getAllBanks(): Promise<Array<{ id: BankId; name: string; data: BankData; updatedAt: string }>> {
-  const { rows } = await sql<{ id: BankId; name: string; data: BankData; updated_at: string }>`
-    SELECT id, name, data, updated_at FROM banks ORDER BY name
+export type BankRow = {
+  id: BankId;
+  name: string;
+  data: BankData;
+  updatedAt: string;
+  cardedData: CardedData | null;
+  cardedUpdatedAt: string | null;
+};
+
+export async function getAllBanks(): Promise<BankRow[]> {
+  const { rows } = await sql<{
+    id: BankId;
+    name: string;
+    data: BankData;
+    updated_at: string;
+    carded_data: CardedData | null;
+    carded_updated_at: string | null;
+  }>`
+    SELECT id, name, data, updated_at, carded_data, carded_updated_at FROM banks ORDER BY name
   `;
-  return rows.map(r => ({ id: r.id, name: r.name, data: r.data, updatedAt: r.updated_at }));
+  return rows.map((r) => ({
+    id: r.id,
+    name: r.name,
+    data: r.data,
+    updatedAt: r.updated_at,
+    cardedData: r.carded_data,
+    cardedUpdatedAt: r.carded_updated_at,
+  }));
+}
+
+/**
+ * Writes scraped carded data to the banks row. Overwrites the entire
+ * carded_data blob (the scraper always produces a full card per bank).
+ * Does NOT touch `data` — that's the broker-email ingest's territory.
+ */
+export async function upsertCardedData(id: BankId, cardedData: CardedData): Promise<void> {
+  await sql`
+    UPDATE banks
+    SET carded_data = ${JSON.stringify(cardedData)}::jsonb,
+        carded_updated_at = NOW()
+    WHERE id = ${id}
+  `;
 }
 
 export async function upsertBank(id: BankId, name: string, data: BankData): Promise<void> {
