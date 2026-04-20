@@ -375,10 +375,32 @@ export default function Dashboard() {
       stageBreakdown[stage].value += numVal(o.value);
     });
 
+    // Lost row special: include both Lost and Archived opportunities from this
+    // calendar year, regardless of the Active Deals status filter. Trail treats
+    // Archived as a separate status (soft-deleted / parked) but from a pipeline
+    // standpoint a deal that went archived is effectively lost — we want it
+    // visible in the Lost row even when the user is viewing "Active Deals".
+    //
+    // Still respects pipeline / adviser / search filters so a per-adviser view
+    // shows only that adviser's lost+archived deals.
+    const lostPool = baseOpps.filter(o => {
+      if (filterPipeline !== 'all' && o.pipelineName !== filterPipeline) return false;
+      if (filterAdviser !== 'all' && o.adviserName !== filterAdviser) return false;
+      if (searchText && !(o.profileName || '').toLowerCase().includes(searchText.toLowerCase())) return false;
+      if (o.status !== 'Lost' && o.status !== 'Archived') return false;
+      return isThisYear(o.closedDate || o.modifiedTimestamp);
+    });
+    if (lostPool.length > 0) {
+      stageBreakdown['Lost'] = {
+        count: lostPool.length,
+        value: lostPool.reduce((s, o) => s + numVal(o.value), 0),
+      };
+    }
+
     // Active pipeline (open, mapped deals)
     const activePipelineValue = open.reduce((s, o) => s + numVal(o.value), 0);
     const inProgress = open.length;
-    const completed = mappedFiltered.filter(o => o.status === 'Closed' || o.status === 'Lost').length;
+    const completed = mappedFiltered.filter(o => o.status === 'Closed' || o.status === 'Lost' || o.status === 'Archived').length;
 
     // Upcoming settlements — only deals whose expected settlement is today or in
     // the future. Past-dated ones are almost always data leftovers (deal settled
@@ -667,7 +689,8 @@ export default function Dashboard() {
                   {['Lost', 'Settled', 'Opportunity', 'Submitted', 'PreApproval', 'Unconditional', 'BuildContract'].map(stage => {
                     const data = metrics.stageBreakdown[stage] || { count: 0, value: 0 };
                     const label =
-                      stage === 'Settled' ? 'Settled (YTD)' :
+                      stage === 'Settled'       ? 'Settled (YTD)' :
+                      stage === 'Lost'          ? 'Lost/Archived (YTD)' :
                       stage === 'BuildContract' ? 'Build Contract' :
                       stage;
                     return (
