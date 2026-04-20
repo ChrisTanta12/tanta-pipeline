@@ -28,9 +28,12 @@ interface Opportunity {
   status: string;
   createdTimestamp: string;
   modifiedTimestamp: string;
+  isProfileArchived?: boolean;
   mortgageApplication?: MortgageApplication;
   opportunityType?: string;
   clientInterview?: ClientInterview;
+  daysInCurrentStage?: number | null;
+  stageEnteredAt?: string | null;
 }
 
 // ===== Helpers =====
