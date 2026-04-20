@@ -1,11 +1,50 @@
 'use client';
 
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
-import type { BankData, BankId } from '@/app/lib/types';
+import type { BankData, BankId, CardedData } from '@/app/lib/types';
 
-type Bank = { id: BankId; name: string; data: BankData; updatedAt: string };
+type Bank = {
+  id: BankId;
+  name: string;
+  data: BankData;
+  updatedAt: string;
+  cardedData?: CardedData | null;
+  cardedUpdatedAt?: string | null;
+};
 type CustomerType = 'existing' | 'new';
 type RateMode = 'fixed' | 'floating';
+
+// Discrepancy threshold: ≥5 basis points (0.05%) between broker and carded.
+const DISCREPANCY_BPS = 5;
+
+/** Returns the carded rate for a given term key, or null if the scraper didn't capture it. */
+function cardedRateFor(bank: Bank, termKey: string, kind: 'lte80' | 'gt80'): number | null {
+  if (termKey === 'floating') return bank.cardedData?.rateCard.floating ?? null;
+  const v = bank.cardedData?.rateCard[kind]?.[termKey];
+  return typeof v === 'number' ? v : null;
+}
+
+/** Returns the broker rate as a number if it's numeric, else null. */
+function brokerRateFor(bank: Bank, termKey: string, kind: 'lte80' | 'gt80'): number | null {
+  const r = bank.data.rateCard?.[termKey];
+  const v = kind === 'lte80' ? r?.lte80 : r?.gt80;
+  return typeof v === 'number' ? v : null;
+}
+
+type CellComparison = {
+  broker: number | null;
+  carded: number | null;
+  deltaBps: number | null;   // |broker - carded| in basis points, null if either missing
+  discrepant: boolean;       // delta >= DISCREPANCY_BPS
+};
+
+function compareCell(broker: number | null, carded: number | null): CellComparison {
+  if (broker === null || carded === null) {
+    return { broker, carded, deltaBps: null, discrepant: false };
+  }
+  const bps = Math.round(Math.abs(broker - carded) * 100);
+  return { broker, carded, deltaBps: bps, discrepant: bps >= DISCREPANCY_BPS };
+}
 
 const BANK_ORDER: BankId[] = ['westpac', 'asb', 'bnz', 'anz', 'kiwibank'];
 
@@ -81,6 +120,43 @@ export default function LendersPage() {
   useEffect(() => { fetchData(); }, [fetchData]);
 
   const lastRefresh = useMemo(() => fetchedAt ? fmtDate(fetchedAt) : '—', [fetchedAt]);
+
+  /**
+   * Rolls up broker-vs-carded cell comparisons across every bank × term × LVR tier.
+   * Only the term keys we display (6mo, 1y, 2y, 3y, 4y, 5y) + floating are considered.
+   * Cells where either side is missing count toward `missing`, not `agree`/`disagree`.
+   */
+  const accuracy = useMemo(() => {
+    const terms = ['6mo', '1y', '2y', '3y', '4y', '5y', 'floating'];
+    let agree = 0;        // both present, |Δ| < 5 bps
+    let brokerBetter = 0; // carded > broker (broker has a special)
+    let cardedBetter = 0; // broker > carded (anomaly worth investigating)
+    let missing = 0;      // one side null
+    let compared = 0;     // both present (agree + brokerBetter + cardedBetter)
+    for (const b of banks) {
+      for (const term of terms) {
+        const tiers: Array<'lte80' | 'gt80'> = term === 'floating' ? ['gt80'] : ['lte80', 'gt80'];
+        for (const tier of tiers) {
+          const cmp = compareCell(brokerRateFor(b, term, tier), cardedRateFor(b, term, tier));
+          if (cmp.broker === null || cmp.carded === null) { missing++; continue; }
+          compared++;
+          if (!cmp.discrepant) agree++;
+          else if (cmp.carded! > cmp.broker!) brokerBetter++;
+          else cardedBetter++;
+        }
+      }
+    }
+    const total = compared + missing;
+    const agreePct = compared > 0 ? Math.round((agree / compared) * 100) : 0;
+    return { total, compared, agree, brokerBetter, cardedBetter, missing, agreePct };
+  }, [banks]);
+
+  const cardedLastScrape = useMemo(() => {
+    const stamps = banks.map(b => b.cardedData?.scrapedAt).filter(Boolean) as string[];
+    if (stamps.length === 0) return null;
+    stamps.sort();
+    return stamps[stamps.length - 1];
+  }, [banks]);
 
   if (loading && banks.length === 0) {
     return (
@@ -236,8 +312,8 @@ export default function LendersPage() {
             })}
           </div>
 
-          {/* PAYMENT FREQUENCIES + MARKET INSIGHTS */}
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 mb-12">
+          {/* PAYMENT FREQUENCIES + MARKET INSIGHTS + SOURCE ACCURACY */}
+          <div className="grid grid-cols-1 lg:grid-cols-4 gap-8 mb-12">
             {/* Frequencies */}
             <div className="lg:col-span-2">
               <h2 className="text-lg font-bold text-[#031f41] mb-4 flex items-center gap-2" style={{ fontFamily: 'Manrope, sans-serif' }}>
@@ -290,6 +366,43 @@ export default function LendersPage() {
                 <span className="material-symbols-outlined text-9xl">trending_up</span>
               </div>
             </div>
+
+            {/* Source accuracy: broker emails vs interest.co.nz carded rates */}
+            <div className="bg-white border border-[#dfe3e8] p-6 rounded-xl">
+              <h2 className="text-lg font-bold text-[#031f41] mb-2 flex items-center gap-2" style={{ fontFamily: 'Manrope, sans-serif' }}>
+                <span className="material-symbols-outlined text-[#2b6485]">fact_check</span>
+                Source Accuracy
+              </h2>
+              <p className="text-xs text-[#44474e] mb-4">
+                Broker-email rates vs carded (interest.co.nz). Agreement = within {DISCREPANCY_BPS} bps.
+              </p>
+              <div className="grid grid-cols-2 gap-3 mb-3">
+                <div>
+                  <p className="text-[9px] uppercase tracking-widest text-[#74777f] font-bold">Agreement</p>
+                  <p className="text-2xl font-extrabold text-[#031f41] leading-tight">{accuracy.agreePct}%</p>
+                  <p className="text-[10px] text-[#44474e]">{accuracy.agree} of {accuracy.compared} cells</p>
+                </div>
+                <div>
+                  <p className="text-[9px] uppercase tracking-widest text-[#74777f] font-bold">Total cells</p>
+                  <p className="text-2xl font-extrabold text-[#031f41] leading-tight">{accuracy.total}</p>
+                  <p className="text-[10px] text-[#44474e]">{accuracy.missing} missing one source</p>
+                </div>
+              </div>
+              <div className="space-y-1 text-[11px] border-t border-[#e5e8ed] pt-3">
+                <div className="flex justify-between">
+                  <span className="text-[#44474e]">Broker better (has special)</span>
+                  <span className="font-bold text-[#031f41]">{accuracy.brokerBetter}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-[#44474e]">Carded better (investigate)</span>
+                  <span className="font-bold text-[#93000a]">{accuracy.cardedBetter}</span>
+                </div>
+                <div className="flex justify-between text-[10px] text-[#74777f] pt-1">
+                  <span>Carded last scraped</span>
+                  <span>{cardedLastScrape ? fmtDate(cardedLastScrape) : '—'}</span>
+                </div>
+              </div>
+            </div>
           </div>
 
           {/* COMPREHENSIVE RATE CARD */}
@@ -340,11 +453,30 @@ export default function LendersPage() {
                         </td>
                         {banks.map(b => {
                           const r = b.data.rateCard?.[term.key];
+                          const lteCmp = compareCell(brokerRateFor(b, term.key, 'lte80'), cardedRateFor(b, term.key, 'lte80'));
+                          const gtCmp = compareCell(brokerRateFor(b, term.key, 'gt80'), cardedRateFor(b, term.key, 'gt80'));
+                          const anyDiscrepancy = lteCmp.discrepant || gtCmp.discrepant;
+                          const maxDelta = Math.max(lteCmp.deltaBps ?? 0, gtCmp.deltaBps ?? 0);
+                          const title = [
+                            `lte80: broker=${fmtRate(lteCmp.broker)} carded=${fmtRate(lteCmp.carded)}${lteCmp.deltaBps !== null ? ` Δ${lteCmp.deltaBps}bps` : ''}`,
+                            `gt80: broker=${fmtRate(gtCmp.broker)} carded=${fmtRate(gtCmp.carded)}${gtCmp.deltaBps !== null ? ` Δ${gtCmp.deltaBps}bps` : ''}`,
+                          ].join('\n');
                           return (
-                            <td key={`${b.id}-${term.key}`} className="px-8 py-4 text-center border-l border-[#c4c6cf]/5">
+                            <td key={`${b.id}-${term.key}`} className="px-8 py-4 text-center border-l border-[#c4c6cf]/5 relative" title={title}>
+                              {anyDiscrepancy && (
+                                <span
+                                  className="absolute top-1 right-1 w-2 h-2 rounded-full bg-[#f59e0b]"
+                                  title={`Broker vs carded differs by ${maxDelta}bps`}
+                                />
+                              )}
                               <div className="flex items-baseline justify-center gap-2">
                                 <span className="text-sm font-extrabold text-[#031f41]">{fmtRate(r?.lte80)}</span>
                                 <span className="text-[10px] text-[#44474e] font-medium">/ {fmtRate(r?.gt80)}</span>
+                              </div>
+                              <div className="flex items-baseline justify-center gap-2 mt-0.5">
+                                <span className="text-[10px] text-[#74777f]">{fmtRate(lteCmp.carded)}</span>
+                                <span className="text-[9px] text-[#a1a5ab]">/ {fmtRate(gtCmp.carded)}</span>
+                                <span className="text-[8px] text-[#a1a5ab] uppercase tracking-wider ml-1">carded</span>
                               </div>
                             </td>
                           );
@@ -357,7 +489,7 @@ export default function LendersPage() {
             </div>
             <div className="mt-4 flex justify-between">
               <p className="text-[10px] text-[#44474e] italic">
-                * Spec = ≤80% LVR (special). Std = &gt;80% LVR (standard + LEP). Source: broker-channel emails, ingested daily.
+                * Top row: broker-email rate (Spec ≤80% LVR / Std &gt;80% LVR). Bottom row: carded rate from interest.co.nz. Amber dot flags ≥{DISCREPANCY_BPS} bps difference.
               </p>
               <p className="text-[10px] text-[#44474e] italic">
                 Updated {lastRefresh}
