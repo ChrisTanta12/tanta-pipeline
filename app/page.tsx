@@ -509,10 +509,8 @@ export default function Dashboard() {
             <span className="text-sm">Pipeline</span>
           </a>
           {[
-            { icon: 'description', label: 'Applications', href: '#' },
-            { icon: 'folder_shared', label: 'Client Vault', href: '#' },
-            { icon: 'account_balance', label: 'Lenders', href: '/lenders' },
-            { icon: 'analytics', label: 'Reports', href: '#' },
+            { icon: 'compare_arrows', label: 'Bank Comparisons', href: '/lenders' },
+            { icon: 'fact_check', label: 'Lender Product Comparisons', href: '/lenders/products' },
           ].map(item => (
             <a key={item.label} className="flex items-center gap-3 px-4 py-3 text-[#3f484f] hover:text-[#228EBF] hover:bg-white/40 transition-all duration-200" href={item.href}>
               <span className="material-symbols-outlined">{item.icon}</span>
@@ -543,9 +541,7 @@ export default function Dashboard() {
           </div>
           <div className="flex items-center gap-6">
             <div className="flex gap-4">
-              <span className="material-symbols-outlined text-on-surface-variant cursor-pointer hover:bg-white/50 p-1.5 rounded-lg transition-colors">notifications</span>
               <span className="material-symbols-outlined text-on-surface-variant cursor-pointer hover:bg-white/50 p-1.5 rounded-lg transition-colors">help</span>
-              <span className="material-symbols-outlined text-on-surface-variant cursor-pointer hover:bg-white/50 p-1.5 rounded-lg transition-colors" onClick={fetchData}>settings</span>
             </div>
             <TrailSyncButton />
             <ExecModeButton execMode={execMode} onToggle={() => {
