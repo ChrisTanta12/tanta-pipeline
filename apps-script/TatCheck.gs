@@ -30,10 +30,10 @@
  *      Pipeline — Portal TAT Check".
  *   2. Paste this entire file as Code.gs.
  *   3. Project Settings → Script Properties → add:
- *        STAFF_EMAIL      — who receives the weekly check email
- *        STAFF_FIRST_NAME — for the greeting (e.g. "Leeza")
- *        INGEST_SECRET    — same value as the rates-sync project
- *        VERCEL_URL       — https://tanta-pipeline.vercel.app
+ *        INGEST_SECRET    — same value as the rates-sync project (REQUIRED)
+ *        VERCEL_URL       — https://tanta-pipeline.vercel.app (REQUIRED)
+ *        STAFF_EMAIL      — optional override; defaults to support@tanta.co.nz
+ *        STAFF_FIRST_NAME — optional override; defaults to "Gen"
  *   4. Run `testSendRequest` once manually to grant Gmail permissions.
  *      Check the inbox to confirm the email arrived.
  *   5. Run `installTatCheckTriggers` once to schedule the Monday
@@ -81,9 +81,9 @@ var TAT_BANKS = {
 
 function sendTatCheckRequest() {
   var props = PropertiesService.getScriptProperties();
-  var staffEmail = props.getProperty('STAFF_EMAIL');
-  var staffFirst = props.getProperty('STAFF_FIRST_NAME') || 'team';
-  if (!staffEmail) throw new Error('STAFF_EMAIL not set in Script Properties');
+  // Defaults baked in for Tanta; Script Properties can override if needed.
+  var staffEmail = props.getProperty('STAFF_EMAIL') || 'support@tanta.co.nz';
+  var staffFirst = props.getProperty('STAFF_FIRST_NAME') || 'Gen';
 
   var today = new Date();
   var dateStr = Utilities.formatDate(today, 'Pacific/Auckland', 'd MMM yyyy');
