@@ -307,15 +307,22 @@ export default function LendersPage() {
                       </Row>
                     </div>
                     {typeof b.data.cashback?.summary === 'string' && b.data.cashback.summary.trim() !== '' && (
-                      <div className="mt-auto pt-4">
-                        <div className="text-[10px] text-[#44474e] font-medium uppercase tracking-wider mb-1">Cashback</div>
-                        <div
-                          className="text-[11px] text-[#031f41] leading-snug line-clamp-3 cursor-help"
+                      <details className="mt-auto pt-4 group/cashback [&_summary::-webkit-details-marker]:hidden">
+                        <summary
+                          className="flex justify-between items-center cursor-pointer list-none border-t border-[#c4c6cf]/20 pt-3"
                           title={b.data.cashback.summary}
                         >
+                          <span className="text-[11px] text-[#44474e] font-medium group-hover/cashback:text-[#031f41]">
+                            Cash Contribution
+                          </span>
+                          <span className="material-symbols-outlined text-[16px] text-[#228EBF] transition-transform group-open/cashback:rotate-180">
+                            expand_more
+                          </span>
+                        </summary>
+                        <p className="text-[11px] text-[#031f41] leading-snug pt-2">
                           {b.data.cashback.summary}
-                        </div>
-                      </div>
+                        </p>
+                      </details>
                     )}
                   </div>
                   <div className="mt-6 flex gap-2">

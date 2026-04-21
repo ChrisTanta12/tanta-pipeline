@@ -105,7 +105,7 @@ const SOURCE: Record<string, GeminiBank> = {
       floating: '5.65%',
       '6_month': '4.45%',
       '1_year': '4.65%',
-      '18_month': '4.85%',
+      '18_month': 'Not offered', // Kiwibank doesn't offer an 18-month term
       '2_year': '5.29%',
       '3_year': '5.55%',
       '4_year': '5.89%',
