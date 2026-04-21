@@ -309,14 +309,21 @@ export default function LendersPage() {
                     {typeof b.data.cashback?.summary === 'string' && b.data.cashback.summary.trim() !== '' && (
                       <details className="mt-auto pt-4 group/cashback [&_summary::-webkit-details-marker]:hidden">
                         <summary
-                          className="flex justify-between items-center cursor-pointer list-none border-t border-[#c4c6cf]/20 pt-3"
+                          className="flex justify-between items-center cursor-pointer list-none border-t border-[#c4c6cf]/20 pt-3 gap-2"
                           title={b.data.cashback.summary}
                         >
                           <span className="text-[11px] text-[#44474e] font-medium group-hover/cashback:text-[#031f41]">
                             Cash Contribution
                           </span>
-                          <span className="material-symbols-outlined text-[16px] text-[#228EBF] transition-transform group-open/cashback:rotate-180">
-                            expand_more
+                          <span className="flex items-center gap-1 min-w-0">
+                            <span className="text-sm font-bold text-[#031f41] truncate">
+                              {(typeof b.data.cashback.headline === 'string' && b.data.cashback.headline.trim() !== '')
+                                ? b.data.cashback.headline
+                                : '—'}
+                            </span>
+                            <span className="material-symbols-outlined text-[16px] text-[#228EBF] transition-transform group-open/cashback:rotate-180 flex-shrink-0">
+                              expand_more
+                            </span>
                           </span>
                         </summary>
                         <p className="text-[11px] text-[#031f41] leading-snug pt-2">

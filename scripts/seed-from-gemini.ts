@@ -31,6 +31,9 @@ interface GeminiBank {
   source_date: string;
   rates: GeminiRates;
   cashback: string;
+  /** Headline shown on the bank card next to "Cash Contribution" before
+   *  the user expands the details. Keep short. */
+  cashback_headline: string;
 }
 
 // Paste the latest Gemini Big-5 JSON here:
@@ -49,6 +52,7 @@ const SOURCE: Record<string, GeminiBank> = {
     },
     cashback:
       'Up to 0.9% for new lending $200k-$1.49m (max $13,500); Up to 1% for $1.5m-$3.0m (max $30,000); $5,000 for First Home Buyers (min $200k lending).',
+    cashback_headline: '0.9%',
     source_date: '2026-04-16',
   },
   ASB: {
@@ -65,6 +69,7 @@ const SOURCE: Record<string, GeminiBank> = {
     },
     cashback:
       'Up to 0.90% for new securities (max $20,000); $5,000 for First Home Buyers (min $200k lending).',
+    cashback_headline: '0.9%',
     source_date: '2026-04-20',
   },
   BNZ: {
@@ -81,6 +86,7 @@ const SOURCE: Record<string, GeminiBank> = {
     },
     cashback:
       '0.9% for new loans (min $200k); 1% for construction; Max $20k; $5k for First Home Buyers.',
+    cashback_headline: '0.9%',
     source_date: '2026-04-21',
   },
   Westpac: {
@@ -97,6 +103,7 @@ const SOURCE: Record<string, GeminiBank> = {
     },
     cashback:
       '0.9% of new lending (min $100k, max $20,000); Minimum $5,000 for First Home Buyers (min $250k lending).',
+    cashback_headline: '0.9%',
     source_date: '2026-04-17',
   },
   Kiwibank: {
@@ -113,6 +120,7 @@ const SOURCE: Record<string, GeminiBank> = {
     },
     cashback:
       '0.85% for refinance, 0.9% otherwise (max $20k); First Home Buyers eligible for min $5,000 (min $250k lending).',
+    cashback_headline: '0.9% · 0.85% refi',
     source_date: '2026-04-21',
   },
 };
@@ -165,7 +173,7 @@ async function main() {
 
     const patch: Partial<BankData> = {
       rateCard,
-      cashback: { summary: bank.cashback },
+      cashback: { summary: bank.cashback, headline: bank.cashback_headline },
       fees: { rateCardEffectiveDate: bank.effective_date },
       lastSourceEmail: {
         id: `manual-seed-${today}`,
