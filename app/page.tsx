@@ -521,10 +521,6 @@ export default function Dashboard() {
           ))}
         </nav>
         <div className="px-4 mt-auto space-y-4">
-          <button className="w-full py-3 px-4 bg-gradient-to-br from-primary to-primary-container text-white rounded-xl font-semibold text-sm shadow-md flex items-center justify-center gap-2">
-            <span className="material-symbols-outlined text-sm">add</span>
-            New Application
-          </button>
           <a className="flex items-center gap-3 px-4 py-3 text-[#3f484f] hover:text-[#228EBF] transition-all" href="#">
             <span className="material-symbols-outlined">logout</span>
             <span className="text-sm">Sign Out</span>

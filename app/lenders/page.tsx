@@ -126,7 +126,7 @@ function mostRecentUpdatedAt(entries: Array<{ entry: TurnaroundEntry }>): string
 function statusFor(trafficLight?: string): { label: string; tone: 'active' | 'warn' | 'critical' } {
   if (!trafficLight) return { label: 'Unknown', tone: 'warn' };
   const s = trafficLight.toLowerCase();
-  if (s.includes('pre-approval & live') || s.includes('preapproval & live')) return { label: 'Active', tone: 'active' };
+  if (s.includes('pre-approval & live') || s.includes('preapproval & live')) return { label: 'PreApproval', tone: 'active' };
   if (s.includes('live only')) return { label: 'Live Only', tone: 'warn' };
   if (s === 'no' || s.startsWith('no ')) return { label: 'Closed', tone: 'critical' };
   return { label: trafficLight, tone: 'warn' };
@@ -203,8 +203,6 @@ export default function LendersPage() {
           </div>
         </div>
         <nav className="flex items-center gap-4">
-          <button className="material-symbols-outlined text-slate-500 hover:bg-slate-50 p-2 rounded-xl cursor-pointer">notifications</button>
-          <button className="material-symbols-outlined text-slate-500 hover:bg-slate-50 p-2 rounded-xl cursor-pointer">settings</button>
           <div className="w-8 h-8 rounded-xl bg-[#1d3557] flex items-center justify-center text-white text-xs font-bold">CB</div>
         </nav>
       </header>
@@ -217,13 +215,8 @@ export default function LendersPage() {
         </div>
         <nav className="space-y-1">
           <NavLink icon="account_tree" label="Pipeline" href="/" />
-          <NavLink icon="description" label="Applications" />
-          <NavLink icon="folder_shared" label="Client Vault" />
           <NavLink icon="compare_arrows" label="Bank Comparisons" href="/lenders" active />
-          <NavLink icon="trending_up" label="Market Rates" />
           <NavLink icon="fact_check" label="Lender Product Comparisons" href="/lenders/products" />
-          <NavLink icon="public" label="Economic Outlook" />
-          <NavLink icon="assignment" label="Executive Summary" />
         </nav>
       </aside>
 
@@ -236,7 +229,7 @@ export default function LendersPage() {
             <div>
               <span className="text-[#44474e] text-[10px] font-bold uppercase tracking-[0.2em] mb-2 block">Competitive Analysis</span>
               <h1 className="text-4xl font-extrabold text-[#031f41] tracking-tight" style={{ fontFamily: 'Manrope, sans-serif' }}>
-                Comparative Banking Sector Matrix
+                Current Banking Rules
               </h1>
               <p className="text-xs text-[#44474e] mt-2">Live data · last refreshed {lastRefresh}</p>
             </div>
@@ -288,9 +281,17 @@ export default function LendersPage() {
                     <StatusBadge tone={st.tone} label={st.label} />
                   </div>
                   <div className="space-y-4 flex-1">
-                    <Row label="LEP 80-85 / 85-90">
-                      <span className="text-sm font-bold text-[#031f41]">{lep85} / {lep90}</span>
-                    </Row>
+                    {b.id === 'kiwibank' ? (
+                      <Row label="Low Equity Pricing">
+                        <span className="text-sm font-bold text-[#031f41]">
+                          {lep85 !== '—' ? lep85 : lep90}
+                        </span>
+                      </Row>
+                    ) : (
+                      <Row label="LEP 80-85 / 85-90">
+                        <span className="text-sm font-bold text-[#031f41]">{lep85} / {lep90}</span>
+                      </Row>
+                    )}
                     <Row label="Service Rate">
                       <span className="text-sm font-bold text-[#031f41]">{fmtRate(b.data.serviceRate)}</span>
                     </Row>
@@ -483,7 +484,10 @@ function StatusBadge({ tone, label }: { tone: 'active' | 'warn' | 'critical'; la
     tone === 'warn'     ? 'bg-[#fff3cd] text-[#856404]' :
                           'bg-[#ffdad8] text-[#92001c]';
   return (
-    <span className={`text-[10px] px-2 py-1 rounded font-bold uppercase tracking-wider ${cls}`}>
+    <span className={`text-[10px] px-2 py-1 rounded font-bold uppercase tracking-wider inline-flex items-center gap-1 ${cls}`}>
+      {tone === 'active' && (
+        <span className="material-symbols-outlined text-[12px] leading-none">check_circle</span>
+      )}
       {label}
     </span>
   );

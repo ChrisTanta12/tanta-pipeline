@@ -180,8 +180,6 @@ export default function LenderProductsPage() {
           </div>
         </div>
         <nav className="flex items-center gap-4">
-          <button className="material-symbols-outlined text-slate-500 hover:bg-slate-50 p-2 rounded-xl cursor-pointer">notifications</button>
-          <button className="material-symbols-outlined text-slate-500 hover:bg-slate-50 p-2 rounded-xl cursor-pointer">settings</button>
           <div className="w-8 h-8 rounded-xl bg-[#1d3557] flex items-center justify-center text-white text-xs font-bold">CB</div>
         </nav>
       </header>
@@ -194,13 +192,8 @@ export default function LenderProductsPage() {
         </div>
         <nav className="space-y-1">
           <NavLink icon="account_tree" label="Pipeline" href="/" />
-          <NavLink icon="description" label="Applications" />
-          <NavLink icon="folder_shared" label="Client Vault" />
           <NavLink icon="compare_arrows" label="Bank Comparisons" href="/lenders" />
-          <NavLink icon="trending_up" label="Market Rates" />
           <NavLink icon="fact_check" label="Lender Product Comparisons" href="/lenders/products" active />
-          <NavLink icon="public" label="Economic Outlook" />
-          <NavLink icon="assignment" label="Executive Summary" />
         </nav>
       </aside>
 
