@@ -174,43 +174,6 @@ export default function LendersPage() {
 
   const lastRefresh = useMemo(() => fetchedAt ? fmtDate(fetchedAt) : '—', [fetchedAt]);
 
-  /**
-   * Rolls up broker-vs-carded cell comparisons across every bank × term × LVR tier.
-   * Only the term keys we display (6mo, 1y, 2y, 3y, 4y, 5y) + floating are considered.
-   * Cells where either side is missing count toward `missing`, not `agree`/`disagree`.
-   */
-  const accuracy = useMemo(() => {
-    const terms = ['6mo', '1y', '2y', '3y', '4y', '5y', 'floating'];
-    let agree = 0;        // both present, |Δ| < 5 bps
-    let brokerBetter = 0; // carded > broker (broker has a special)
-    let cardedBetter = 0; // broker > carded (anomaly worth investigating)
-    let missing = 0;      // one side null
-    let compared = 0;     // both present (agree + brokerBetter + cardedBetter)
-    for (const b of banks) {
-      for (const term of terms) {
-        const tiers: Array<'lte80' | 'gt80'> = term === 'floating' ? ['gt80'] : ['lte80', 'gt80'];
-        for (const tier of tiers) {
-          const cmp = compareCell(brokerRateFor(b, term, tier), cardedRateFor(b, term, tier));
-          if (cmp.broker === null || cmp.carded === null) { missing++; continue; }
-          compared++;
-          if (!cmp.discrepant) agree++;
-          else if (cmp.carded! > cmp.broker!) brokerBetter++;
-          else cardedBetter++;
-        }
-      }
-    }
-    const total = compared + missing;
-    const agreePct = compared > 0 ? Math.round((agree / compared) * 100) : 0;
-    return { total, compared, agree, brokerBetter, cardedBetter, missing, agreePct };
-  }, [banks]);
-
-  const cardedLastScrape = useMemo(() => {
-    const stamps = banks.map(b => b.cardedData?.scrapedAt).filter(Boolean) as string[];
-    if (stamps.length === 0) return null;
-    stamps.sort();
-    return stamps[stamps.length - 1];
-  }, [banks]);
-
   if (loading && banks.length === 0) {
     return (
       <div className="min-h-screen flex items-center justify-center" style={{ backgroundColor: '#f7f9fe' }}>
@@ -258,7 +221,7 @@ export default function LendersPage() {
           <NavLink icon="folder_shared" label="Client Vault" />
           <NavLink icon="compare_arrows" label="Bank Comparisons" href="/lenders" active />
           <NavLink icon="trending_up" label="Market Rates" />
-          <NavLink icon="analytics" label="Historical Trends" />
+          <NavLink icon="fact_check" label="Lender Product Comparisons" href="/lenders/products" />
           <NavLink icon="public" label="Economic Outlook" />
           <NavLink icon="assignment" label="Executive Summary" />
         </nav>
@@ -315,7 +278,7 @@ export default function LendersPage() {
               return (
                 <div
                   key={b.id}
-                  className="bg-white p-6 rounded-xl shadow-sm border-l-4"
+                  className="bg-white p-6 rounded-xl shadow-sm border-l-4 flex flex-col"
                   style={{ borderLeftColor: BANK_ACCENT[b.id] }}
                 >
                   <div className="flex justify-between items-start mb-6">
@@ -324,7 +287,7 @@ export default function LendersPage() {
                     </h3>
                     <StatusBadge tone={st.tone} label={st.label} />
                   </div>
-                  <div className="space-y-4">
+                  <div className="space-y-4 flex-1">
                     <Row label="LEP 80-85 / 85-90">
                       <span className="text-sm font-bold text-[#031f41]">{lep85} / {lep90}</span>
                     </Row>
@@ -332,7 +295,11 @@ export default function LendersPage() {
                       <span className="text-sm font-bold text-[#031f41]">{fmtRate(b.data.serviceRate)}</span>
                     </Row>
                     <TurnaroundRow bank={b} onOpen={() => setTatDetailBankId(b.id)} />
-
+                    <Row label="Min Repayment Freq">
+                      <span className="text-sm font-bold text-[#031f41] capitalize">
+                        {b.data.productFeatures?.minRepaymentFreq ?? '—'}
+                      </span>
+                    </Row>
                   </div>
                   <div className="mt-6 flex gap-2">
                     <button
@@ -359,99 +326,6 @@ export default function LendersPage() {
                 </div>
               );
             })}
-          </div>
-
-          {/* PAYMENT FREQUENCIES + MARKET INSIGHTS + SOURCE ACCURACY */}
-          <div className="grid grid-cols-1 lg:grid-cols-4 gap-8 mb-12">
-            {/* Frequencies */}
-            <div className="lg:col-span-2">
-              <h2 className="text-lg font-bold text-[#031f41] mb-4 flex items-center gap-2" style={{ fontFamily: 'Manrope, sans-serif' }}>
-                <span className="material-symbols-outlined text-[#2b6485]">calendar_month</span>
-                Payment Frequencies Available
-              </h2>
-              <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
-                {(['Weekly', 'Fortnightly', 'Monthly'] as const).map(freq => {
-                  const banksAtFreq = banks.filter(b => {
-                    const v = (b.data.productFeatures?.minRepaymentFreq ?? '').toLowerCase();
-                    // Weekly covers everyone who allows weekly; fortnightly covers weekly+fortnightly; monthly covers all.
-                    if (freq === 'Weekly') return v.includes('weekly');
-                    if (freq === 'Fortnightly') return v.includes('weekly') || v.includes('fortnightly');
-                    return true; // monthly
-                  });
-                  return (
-                    <div key={freq} className="bg-white border border-[#dfe3e8] p-4 rounded-xl flex flex-col items-center justify-center text-center">
-                      <span className="text-[10px] font-bold uppercase tracking-widest text-[#44474e] mb-1">{freq}</span>
-                      <div className="text-[#031f41] font-bold text-sm">
-                        {banksAtFreq.length === banks.length ? 'All Banks' : `${banksAtFreq.length} of ${banks.length}`}
-                      </div>
-                      <div className="text-[10px] text-[#74777f] mt-1">
-                        {banksAtFreq.map(b => b.name).join(' · ') || 'None'}
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-            </div>
-
-            {/* Market insights */}
-            <div className="bg-[#1d3557] text-white p-6 rounded-xl relative overflow-hidden">
-              <div className="relative z-10">
-                <h2 className="text-lg font-bold mb-2" style={{ fontFamily: 'Manrope, sans-serif' }}>Market Insights</h2>
-                <p className="text-sm text-[#879ec6] mb-4">
-                  Rate card for {customer === 'new' ? 'new-to-bank' : 'existing'} customers · viewing{' '}
-                  {rateMode === 'fixed' ? 'fixed-term' : 'floating'} rates.
-                  Flip the Existing/New buttons to compare appetite.
-                </p>
-                <div className="grid grid-cols-2 gap-3 mb-4">
-                  <Stat label="Banks tracked" value={String(banks.length)} />
-                  <Stat label="Last feed" value={lastRefresh} />
-                </div>
-                <div className="flex items-center gap-2 text-xs font-bold text-[#a3d8fe]">
-                  <span>Daily cron · 07:00 NZST</span>
-                  <span className="material-symbols-outlined text-sm">arrow_forward</span>
-                </div>
-              </div>
-              <div className="absolute -right-4 -bottom-4 opacity-10 pointer-events-none">
-                <span className="material-symbols-outlined text-9xl">trending_up</span>
-              </div>
-            </div>
-
-            {/* Source accuracy: broker emails vs interest.co.nz carded rates */}
-            <div className="bg-white border border-[#dfe3e8] p-6 rounded-xl">
-              <h2 className="text-lg font-bold text-[#031f41] mb-2 flex items-center gap-2" style={{ fontFamily: 'Manrope, sans-serif' }}>
-                <span className="material-symbols-outlined text-[#2b6485]">fact_check</span>
-                Source Accuracy
-              </h2>
-              <p className="text-xs text-[#44474e] mb-4">
-                Broker-email rates vs carded (interest.co.nz). Agreement = within {DISCREPANCY_BPS} bps.
-              </p>
-              <div className="grid grid-cols-2 gap-3 mb-3">
-                <div>
-                  <p className="text-[9px] uppercase tracking-widest text-[#74777f] font-bold">Agreement</p>
-                  <p className="text-2xl font-extrabold text-[#031f41] leading-tight">{accuracy.agreePct}%</p>
-                  <p className="text-[10px] text-[#44474e]">{accuracy.agree} of {accuracy.compared} cells</p>
-                </div>
-                <div>
-                  <p className="text-[9px] uppercase tracking-widest text-[#74777f] font-bold">Total cells</p>
-                  <p className="text-2xl font-extrabold text-[#031f41] leading-tight">{accuracy.total}</p>
-                  <p className="text-[10px] text-[#44474e]">{accuracy.missing} missing one source</p>
-                </div>
-              </div>
-              <div className="space-y-1 text-[11px] border-t border-[#e5e8ed] pt-3">
-                <div className="flex justify-between">
-                  <span className="text-[#44474e]">Broker better (has special)</span>
-                  <span className="font-bold text-[#031f41]">{accuracy.brokerBetter}</span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-[#44474e]">Carded better (investigate)</span>
-                  <span className="font-bold text-[#93000a]">{accuracy.cardedBetter}</span>
-                </div>
-                <div className="flex justify-between text-[10px] text-[#74777f] pt-1">
-                  <span>Carded last scraped</span>
-                  <span>{cardedLastScrape ? fmtDate(cardedLastScrape) : '—'}</span>
-                </div>
-              </div>
-            </div>
           </div>
 
           {/* COMPREHENSIVE RATE CARD */}
@@ -630,15 +504,6 @@ function Row({ label, children }: { label: string; children: React.ReactNode }) 
     <div className="flex justify-between items-center border-b border-[#c4c6cf]/20 pb-2">
       <span className="text-[11px] text-[#44474e] font-medium">{label}</span>
       {children}
-    </div>
-  );
-}
-
-function Stat({ label, value }: { label: string; value: string }) {
-  return (
-    <div>
-      <p className="text-[9px] uppercase tracking-widest text-[#879ec6] font-bold">{label}</p>
-      <p className="text-sm font-bold text-white mt-1">{value}</p>
     </div>
   );
 }
