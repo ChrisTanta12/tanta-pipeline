@@ -206,7 +206,7 @@ export type LogEntry = {
   gmailMessageId: string | null;
   gmailSubject: string | null;
   gmailDate: string | null;
-  parser: 'text' | 'vision' | 'manual' | null;
+  parser: 'text' | 'vision' | 'vision+pdf' | 'vision+both' | 'manual' | null;
   status: 'success' | 'partial' | 'failed' | 'needs_review';
   changes: Record<string, unknown> | null;
   error: string | null;

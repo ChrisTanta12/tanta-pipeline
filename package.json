@@ -12,6 +12,7 @@
     "trail:sync": "tsx --env-file=.env.local scripts/trail-sync.ts",
     "db:debug": "tsx --env-file=.env.local scripts/debug-profiles.ts",
     "scrape:interest": "tsx --env-file=.env.local scripts/scrape-interest.ts",
+    "seed:gemini": "tsx --env-file=.env.local scripts/seed-from-gemini.ts",
     "ingest:test": "tsx --env-file=.env.local scripts/test-pdf-ingest.ts"
   },
   "dependencies": {

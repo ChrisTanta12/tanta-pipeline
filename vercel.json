@@ -2,10 +2,6 @@
   "$schema": "https://openapi.vercel.sh/vercel.json",
   "crons": [
     {
-      "path": "/api/ingest-bank-updates",
-      "schedule": "0 19 * * *"
-    },
-    {
       "path": "/api/scrape-interest",
       "schedule": "0 20 * * *"
     }

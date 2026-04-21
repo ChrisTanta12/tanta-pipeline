@@ -49,10 +49,7 @@ export async function GET(req: NextRequest) {
           gmailMessageId: email.messageId,
           gmailSubject: email.subject,
           gmailDate: email.date,
-          // result.parser may be 'vision+pdf'/'vision+both' which are newer
-          // variants than LogEntry.parser currently enumerates. The underlying
-          // column is plain TEXT so the value is preserved; cast to bridge.
-          parser: result.parser as 'text' | 'vision' | 'manual',
+          parser: result.parser,
           status: result.status,
           changes: result.changes ?? null,
           error: result.error ?? null,
