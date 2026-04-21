@@ -11,7 +11,7 @@
  * so a reply here will stick until the next weekly cycle updates it.
  *
  * Architecture:
- *   MONDAY 9am NZT — sendTatCheckRequest()
+ *   MONDAY + WEDNESDAY 9am NZT — sendTatCheckRequest()
  *     ├─ draws a fresh template email addressed to STAFF_EMAIL
  *     ├─ includes the previous values (if any) for context
  *     └─ GmailApp.sendEmail — deliberately sets a subject prefix
@@ -328,19 +328,21 @@ function installTatCheckTriggers() {
     if (fn === 'sendTatCheckRequest' || fn === 'processTatReplies') ScriptApp.deleteTrigger(t);
   });
 
-  ScriptApp.newTrigger('sendTatCheckRequest')
-    .timeBased()
-    .onWeekDay(ScriptApp.WeekDay.MONDAY)
-    .atHour(9)
-    .inTimezone('Pacific/Auckland')
-    .create();
+  [ScriptApp.WeekDay.MONDAY, ScriptApp.WeekDay.WEDNESDAY].forEach(function (day) {
+    ScriptApp.newTrigger('sendTatCheckRequest')
+      .timeBased()
+      .onWeekDay(day)
+      .atHour(9)
+      .inTimezone('Pacific/Auckland')
+      .create();
+  });
 
   ScriptApp.newTrigger('processTatReplies')
     .timeBased()
     .everyHours(2)
     .create();
 
-  Logger.log('installed: sendTatCheckRequest (Mon 9am NZT), processTatReplies (every 2h)');
+  Logger.log('installed: sendTatCheckRequest (Mon + Wed 9am NZT), processTatReplies (every 2h)');
 }
 
 function testSendRequest() {
