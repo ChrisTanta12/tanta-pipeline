@@ -305,7 +305,7 @@ export default function LendersPage() {
           {/* BENTO GRID — BANK CARDS */}
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-6 mb-12">
             {banks.map(b => {
-              const tl = b.data.trafficLights?.lte80?.[customer];
+              const tl = b.data.trafficLights?.['80_90']?.[customer];
               const st = statusFor(tl);
               const lep85 = typeof b.data.lep?.['80_85'] === 'number'
                 ? fmtPct(b.data.lep['80_85']) : (b.data.lep?.['80_85'] ?? '—');
