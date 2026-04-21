@@ -480,13 +480,13 @@ function NavLink({ icon, label, href = '#', active = false }: { icon: string; la
 
 function StatusBadge({ tone, label }: { tone: 'active' | 'warn' | 'critical'; label: string }) {
   const cls =
-    tone === 'active'   ? 'bg-[#a3d8fe] text-[#064c6b]' :
+    tone === 'active'   ? 'bg-[#a7f3d0] text-[#065f46]' :
     tone === 'warn'     ? 'bg-[#fff3cd] text-[#856404]' :
                           'bg-[#ffdad8] text-[#92001c]';
   return (
-    <span className={`text-[10px] px-2 py-1 rounded font-bold uppercase tracking-wider inline-flex items-center gap-1 ${cls}`}>
+    <span className={`text-[8px] px-1.5 py-0.5 rounded font-bold uppercase tracking-wide inline-flex items-center gap-0.5 whitespace-nowrap ${cls}`}>
       {tone === 'active' && (
-        <span className="material-symbols-outlined text-[12px] leading-none">check_circle</span>
+        <span className="material-symbols-outlined text-[10px] leading-none">check_circle</span>
       )}
       {label}
     </span>
