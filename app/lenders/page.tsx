@@ -54,16 +54,20 @@ const BANK_ACCENT: Record<BankId, string> = {
   kiwibank:'#22c55e',   // green
 };
 
-const TERM_ORDER: Array<{ key: string; label: string }> = [
-  { key: 'floating', label: 'Floating' },
-  { key: '6mo',     label: '6 Months' },
-  { key: '1y',      label: '1 Year' },
-  { key: '18mo',    label: '18 Months' },
-  { key: '2y',      label: '2 Years' },
-  { key: '3y',      label: '3 Years' },
-  { key: '4y',      label: '4 Years' },
-  { key: '5y',      label: '5 Years' },
+type TermDef = { key: string; label: string };
+
+const MAIN_TERMS: TermDef[] = [
+  { key: '6mo',  label: '6 Months' },
+  { key: '1y',   label: '1 Year' },
+  { key: '18mo', label: '18 Months' },
+  { key: '2y',   label: '2 Years' },
+  { key: '3y',   label: '3 Years' },
 ];
+const LONG_TERMS: TermDef[] = [
+  { key: '4y', label: '4 Years' },
+  { key: '5y', label: '5 Years' },
+];
+const FLOATING_TERM: TermDef[] = [{ key: 'floating', label: 'Floating' }];
 
 function fmtRate(v: unknown): string {
   if (v === null || v === undefined || v === '') return '—';
@@ -279,29 +283,31 @@ export default function LendersPage() {
                     </h3>
                     <StatusBadge tone={st.tone} label={st.label} />
                   </div>
-                  <div className="space-y-4 flex-1">
-                    {b.id === 'kiwibank' ? (
-                      <Row label="Low Equity Pricing">
-                        <span className="text-sm font-bold text-[#031f41]">
-                          {lep85 !== '—' ? lep85 : lep90}
+                  <div className="flex-1 flex flex-col">
+                    <div className="space-y-4">
+                      {b.id === 'kiwibank' ? (
+                        <Row label="Low Equity Pricing">
+                          <span className="text-sm font-bold text-[#031f41]">
+                            {lep85 !== '—' ? lep85 : lep90}
+                          </span>
+                        </Row>
+                      ) : (
+                        <Row label="LEP 80-85 / 85-90">
+                          <span className="text-sm font-bold text-[#031f41]">{lep85} / {lep90}</span>
+                        </Row>
+                      )}
+                      <Row label="Service Rate">
+                        <span className="text-sm font-bold text-[#031f41]">{fmtRate(b.data.serviceRate)}</span>
+                      </Row>
+                      <TurnaroundRow bank={b} onOpen={() => setTatDetailBankId(b.id)} />
+                      <Row label="Min Repayment Freq">
+                        <span className="text-sm font-bold text-[#031f41] capitalize">
+                          {b.data.productFeatures?.minRepaymentFreq ?? '—'}
                         </span>
                       </Row>
-                    ) : (
-                      <Row label="LEP 80-85 / 85-90">
-                        <span className="text-sm font-bold text-[#031f41]">{lep85} / {lep90}</span>
-                      </Row>
-                    )}
-                    <Row label="Service Rate">
-                      <span className="text-sm font-bold text-[#031f41]">{fmtRate(b.data.serviceRate)}</span>
-                    </Row>
-                    <TurnaroundRow bank={b} onOpen={() => setTatDetailBankId(b.id)} />
-                    <Row label="Min Repayment Freq">
-                      <span className="text-sm font-bold text-[#031f41] capitalize">
-                        {b.data.productFeatures?.minRepaymentFreq ?? '—'}
-                      </span>
-                    </Row>
+                    </div>
                     {typeof b.data.cashback?.summary === 'string' && b.data.cashback.summary.trim() !== '' && (
-                      <div className="pt-2">
+                      <div className="mt-auto pt-4">
                         <div className="text-[10px] text-[#44474e] font-medium uppercase tracking-wider mb-1">Cashback</div>
                         <div
                           className="text-[11px] text-[#031f41] leading-snug line-clamp-3 cursor-help"
@@ -366,51 +372,23 @@ export default function LendersPage() {
               </div>
             </div>
 
-            <div className="bg-white rounded-xl shadow-[0_10px_40px_rgba(0,0,0,0.04)] overflow-hidden">
-              <div className="overflow-x-auto">
-                <table className="w-full text-left border-collapse">
-                  <thead>
-                    <tr className="bg-[#e5e8ed]">
-                      <th className="px-8 py-5 text-[10px] font-black text-[#44474e] uppercase tracking-widest">Term Duration</th>
-                      {banks.map(b => (
-                        <th
-                          key={b.id}
-                          className="px-8 py-5 text-xs font-black uppercase tracking-widest text-center border-l border-[#c4c6cf]/20"
-                          style={{ color: BANK_ACCENT[b.id], fontFamily: 'Manrope, sans-serif' }}
-                        >
-                          {b.name}
-                        </th>
-                      ))}
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-[#e5e8ed]">
-                    {TERM_ORDER.map((term, i) => (
-                      <tr key={term.key} className={`transition-colors hover:bg-[#031f41]/5 ${i % 2 === 1 ? 'bg-[#031f41]/[0.02]' : ''}`}>
-                        <td className="px-8 py-4 font-bold text-[#031f41]" style={{ fontFamily: 'Manrope, sans-serif' }}>
-                          {term.label}
-                        </td>
-                        {banks.map(b => {
-                          const cell = rateForCell(b, rateMode, term.key);
-                          return (
-                            <td key={`${b.id}-${term.key}`} className="px-8 py-4 text-center border-l border-[#c4c6cf]/5">
-                              <CellValue cell={cell} />
-                            </td>
-                          );
-                        })}
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
+            <div className="space-y-6">
+              <RateTable banks={banks} terms={MAIN_TERMS}   mode={rateMode} subtitle="Short & Mid Term · 6mo – 3y" />
+              <RateTable banks={banks} terms={LONG_TERMS}   mode={rateMode} subtitle="Long Term · 4y – 5y" />
+              <RateTable banks={banks} terms={FLOATING_TERM} mode={rateMode} subtitle="Floating" />
             </div>
-            <div className="mt-4 flex justify-between">
-              <p className="text-[10px] text-[#44474e] italic">
+            <div className="mt-4 space-y-1">
+              <p className="text-[10px] text-[#44474e]">
+                <span className="font-semibold">Reading split cells (e.g. <span className="text-[#031f41]">4.69%</span> / <span className="opacity-70">5.29</span>):</span>{' '}
                 {rateMode === 'special'
-                  ? '* Broker-channel Special rates (LVR ≤80% / >80% LVR shown where both tiers are published). Source: Gmail ingest via Gemini.'
-                  : '* Carded / advertised rates (LVR ≤80% / >80% LVR where distinguished). Source: interest.co.nz.'}
+                  ? 'bold number is the broker Special rate for LVR ≤80%; lighter number is the broker Standard rate for LVR >80%. Where only one number is shown, that tier is either not published or not distinguished by the bank.'
+                  : 'bold number is the advertised "Special" rate for LVR ≤80% on interest.co.nz; lighter number is the "Standard" rate for LVR >80%. Where only one number is shown, interest.co.nz publishes a single rate for that term (e.g. ASB and BNZ do not split tiers on their listing).'}
               </p>
-              <p className="text-[10px] text-[#44474e] italic">
-                Updated {lastRefresh}
+              <p className="text-[10px] text-[#44474e] italic flex justify-between">
+                <span>
+                  Source: {rateMode === 'special' ? 'Gmail bank-update emails via Gemini ingest.' : 'interest.co.nz scraped daily at 08:00 NZT.'}
+                </span>
+                <span>Updated {lastRefresh}</span>
               </p>
             </div>
           </section>
@@ -471,9 +449,62 @@ function StatusBadge({ tone, label }: { tone: 'active' | 'warn' | 'critical'; la
 
 function Row({ label, children }: { label: string; children: React.ReactNode }) {
   return (
-    <div className="flex justify-between items-center border-b border-[#c4c6cf]/20 pb-2">
+    <div className="flex justify-between items-center border-b border-[#c4c6cf]/20 pb-2 min-h-[28px]">
       <span className="text-[11px] text-[#44474e] font-medium">{label}</span>
       {children}
+    </div>
+  );
+}
+
+/**
+ * Sub-table of the Comprehensive Rate Card. Renders its own header so
+ * short/mid, long and floating sections each read as standalone groupings.
+ */
+function RateTable({
+  banks, terms, mode, subtitle,
+}: {
+  banks: Bank[];
+  terms: TermDef[];
+  mode: RateMode;
+  subtitle: string;
+}) {
+  return (
+    <div>
+      <div className="text-[10px] font-black uppercase tracking-[0.3em] text-[#44474e] mb-2 pl-1">{subtitle}</div>
+      <div className="bg-white rounded-xl shadow-[0_10px_40px_rgba(0,0,0,0.04)] overflow-hidden">
+        <div className="overflow-x-auto">
+          <table className="w-full text-left border-collapse">
+            <thead>
+              <tr className="bg-[#e5e8ed]">
+                <th className="px-8 py-4 text-[10px] font-black text-[#44474e] uppercase tracking-widest">Term</th>
+                {banks.map(b => (
+                  <th
+                    key={b.id}
+                    className="px-8 py-4 text-xs font-black uppercase tracking-widest text-center border-l border-[#c4c6cf]/20"
+                    style={{ color: BANK_ACCENT[b.id], fontFamily: 'Manrope, sans-serif' }}
+                  >
+                    {b.name}
+                  </th>
+                ))}
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-[#e5e8ed]">
+              {terms.map((term, i) => (
+                <tr key={term.key} className={`transition-colors hover:bg-[#031f41]/5 ${i % 2 === 1 ? 'bg-[#031f41]/[0.02]' : ''}`}>
+                  <td className="px-8 py-4 font-bold text-[#031f41]" style={{ fontFamily: 'Manrope, sans-serif' }}>
+                    {term.label}
+                  </td>
+                  {banks.map(b => (
+                    <td key={`${b.id}-${term.key}`} className="px-8 py-4 text-center border-l border-[#c4c6cf]/5">
+                      <CellValue cell={rateForCell(b, mode, term.key)} />
+                    </td>
+                  ))}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
     </div>
   );
 }
