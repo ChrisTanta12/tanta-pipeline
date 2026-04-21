@@ -440,16 +440,6 @@ export default function LendersPage() {
         </div>
       </main>
 
-      {/* FAB */}
-      <div className="fixed bottom-8 right-8 z-50 print:hidden">
-        <button
-          onClick={fetchData}
-          className="w-14 h-14 bg-[#031f41] text-white rounded-full shadow-lg flex items-center justify-center hover:scale-105 transition-transform"
-          title="Refresh data"
-        >
-          <span className={`material-symbols-outlined ${loading ? 'animate-spin' : ''}`}>refresh</span>
-        </button>
-      </div>
 
       {/* TAT-detail modal — opens when a bank card's Turnaround row is clicked */}
       {tatDetailBankId && (() => {
