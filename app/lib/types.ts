@@ -92,7 +92,10 @@ export type IngestionResult = {
   messageId: string;
   subject: string;
   date: string;
-  parser: 'text' | 'vision' | 'manual';
+  // 'vision'       = images only (legacy)
+  // 'vision+pdf'   = PDF attachment(s) only
+  // 'vision+both'  = images + PDF(s) together
+  parser: 'text' | 'vision' | 'vision+pdf' | 'vision+both' | 'manual';
   status: 'success' | 'partial' | 'failed' | 'needs_review';
   patch?: Partial<BankData>;
   changes?: Record<string, unknown>;

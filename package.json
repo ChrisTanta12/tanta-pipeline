@@ -11,7 +11,8 @@
     "oauth:setup": "tsx --env-file=.env.local scripts/oauth-setup.ts",
     "trail:sync": "tsx --env-file=.env.local scripts/trail-sync.ts",
     "db:debug": "tsx --env-file=.env.local scripts/debug-profiles.ts",
-    "scrape:interest": "tsx --env-file=.env.local scripts/scrape-interest.ts"
+    "scrape:interest": "tsx --env-file=.env.local scripts/scrape-interest.ts",
+    "ingest:test": "tsx --env-file=.env.local scripts/test-pdf-ingest.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.32.1",
