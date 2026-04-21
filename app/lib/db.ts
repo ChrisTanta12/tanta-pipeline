@@ -82,20 +82,10 @@ function isLegacyTurnaround(v: unknown): v is LegacyTurnaround {
 
 function normalizeTurnaroundPatch(incoming: unknown, now: string): TurnaroundMap | null {
   if (!incoming || typeof incoming !== 'object') return null;
-  if (isLegacyTurnaround(incoming)) {
-    const legacy = incoming as LegacyTurnaround;
-    const out: TurnaroundMap = {};
-    if (legacy.retail !== undefined && legacy.retail !== null && (legacy.retail as unknown) !== '') {
-      out['Retail'] = { days: legacy.retail as number | string, updatedAt: now, source: 'auto' };
-    }
-    if (legacy.business !== undefined && legacy.business !== null && (legacy.business as unknown) !== '') {
-      out['Business'] = { days: legacy.business as number | string, updatedAt: now, source: 'auto' };
-    }
-    return out;
-  }
-  // Assume already a TurnaroundMap — coerce any entry lacking updatedAt/source to defaults.
+  const obj = incoming as Record<string, unknown>;
   const out: TurnaroundMap = {};
-  for (const [key, raw] of Object.entries(incoming as Record<string, unknown>)) {
+  // Pass 1: accept anything already shaped as a TurnaroundEntry.
+  for (const [key, raw] of Object.entries(obj)) {
     if (!raw || typeof raw !== 'object') continue;
     const r = raw as Partial<TurnaroundEntry> & { days?: unknown };
     if (r.days === undefined || r.days === null || r.days === '') continue;
@@ -104,6 +94,15 @@ function normalizeTurnaroundPatch(incoming: unknown, now: string): TurnaroundMap
       updatedAt: typeof r.updatedAt === 'string' ? r.updatedAt : now,
       source: r.source === 'manual' ? 'manual' : 'auto',
     };
+  }
+  // Pass 2: promote legacy scalar entries (retail, business) to canonical
+  // keys only if the canonical key wasn't already populated by pass 1.
+  // Handles mixed-shape rows where both old and new entries coexist.
+  for (const [key, raw] of Object.entries(obj)) {
+    if (typeof raw !== 'number' && typeof raw !== 'string') continue;
+    const label = key === 'retail' ? 'Retail' : key === 'business' ? 'Business' : key;
+    if (out[label]) continue;
+    out[label] = { days: raw, updatedAt: now, source: 'auto' };
   }
   return Object.keys(out).length > 0 ? out : null;
 }
@@ -115,13 +114,19 @@ function normalizeTurnaroundPatch(incoming: unknown, now: string): TurnaroundMap
  * wins.
  */
 function mergeTurnaroundMaps(existing: TurnaroundMap | undefined, incoming: TurnaroundMap): TurnaroundMap {
-  const out: TurnaroundMap = { ...(existing ?? {}) };
-  for (const [key, entry] of Object.entries(incoming)) {
-    const prior = out[key];
-    if (prior && prior.source === 'manual' && entry.source !== 'manual') {
-      // Manual wins; skip auto overwrite.
-      continue;
+  // Start with manual entries from existing (manual always wins).
+  const out: TurnaroundMap = {};
+  if (existing) {
+    for (const [key, entry] of Object.entries(existing)) {
+      if (entry && entry.source === 'manual') out[key] = entry;
     }
+  }
+  // Apply incoming. If an incoming key collides with a manual entry, keep
+  // the manual one. Otherwise incoming replaces any existing auto value,
+  // and auto entries not named in incoming are DROPPED — a fresh ingest
+  // is expected to carry the full current picture for a bank.
+  for (const [key, entry] of Object.entries(incoming)) {
+    if (out[key]?.source === 'manual' && entry.source !== 'manual') continue;
     out[key] = entry;
   }
   return out;
@@ -139,10 +144,11 @@ export async function mergeBankData(id: BankId, patch: Partial<BankData> & { tur
       const { rows } = await sql<{ data: BankData }>`
         SELECT data FROM banks WHERE id = ${id}
       `;
-      // Persisted shape is always TurnaroundMap (any legacy shape from an
-      // earlier write would've been normalised before landing here). Safe to
-      // narrow the union for the merge.
-      const existing = rows[0]?.data?.turnaround as TurnaroundMap | undefined;
+      // Rows that predate the TurnaroundMap migration may still hold the
+      // legacy { retail, business } shape OR a mix of legacy+new from past
+      // partial writes. Normalise existing through the same path before
+      // merging so the output is always a clean TurnaroundMap.
+      const existing = normalizeTurnaroundPatch(rows[0]?.data?.turnaround, now) ?? undefined;
       patchToWrite.turnaround = mergeTurnaroundMaps(existing, incoming);
     } else {
       delete patchToWrite.turnaround;

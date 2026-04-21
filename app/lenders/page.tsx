@@ -133,11 +133,16 @@ function normaliseTat(raw: unknown): TurnaroundMap | undefined {
   return Object.keys(out).length > 0 ? out : undefined;
 }
 
+/** Keys we treat as the "retail / residential home-loan" TAT on the card.
+ * Matches: "Retail", "Priority Retail", "Other Retail" (ANZ-style),
+ * "New Applications" / "New Application" (BNZ-style). Extend the regex
+ * if a bank starts using a different category label for their primary
+ * new-lending TAT. */
 function pickRetailEntries(tmap: TurnaroundMap | undefined): Array<{ key: string; entry: TurnaroundEntry }> {
   if (!tmap) return [];
   const out: Array<{ key: string; entry: TurnaroundEntry }> = [];
   for (const [key, entry] of Object.entries(tmap)) {
-    if (/retail/i.test(key)) out.push({ key, entry });
+    if (/retail|new\s*applications?/i.test(key)) out.push({ key, entry });
   }
   return out;
 }

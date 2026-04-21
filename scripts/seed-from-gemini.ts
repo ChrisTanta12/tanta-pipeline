@@ -34,31 +34,38 @@ interface GeminiBank {
   /** Headline shown on the bank card next to "Cash Contribution" before
    *  the user expands the details. Keep short. */
   cashback_headline: string;
+  /** Optional TAT per category (days). If omitted, existing turnaround
+   *  data in the row is preserved (we deliberately don't pull TAT for
+   *  ANZ / Kiwibank — those are gated behind portal logins and updated
+   *  via a separate internal workflow). Manual overrides
+   *  (source='manual') always win over seed writes. */
+  turnaround?: Record<string, number>;
 }
 
 // Paste the latest Gemini Big-5 JSON here:
 const SOURCE: Record<string, GeminiBank> = {
   ANZ: {
-    effective_date: '2026-04-15',
+    effective_date: '2026-04-23',
     rates: {
-      floating: '5.54%',
+      floating: '5.29%',
       '6_month': '4.49%',
-      '1_year': '4.69%',
-      '18_month': '4.99%',
-      '2_year': '5.29%',
-      '3_year': '5.49%',
-      '4_year': '6.19%',
-      '5_year': '6.29%',
+      '1_year': '4.59%',
+      '18_month': '4.79%',
+      '2_year': '4.99%',
+      '3_year': '5.39%',
+      '4_year': '5.65%',
+      '5_year': '5.79%',
     },
     cashback:
       'Up to 0.9% for new lending $200k-$1.49m (max $13,500); Up to 1% for $1.5m-$3.0m (max $30,000); $5,000 for First Home Buyers (min $200k lending).',
     cashback_headline: '0.9%',
-    source_date: '2026-04-16',
+    source_date: '2026-04-21',
+    // Turnaround omitted — ANZ is portal-only, managed via internal workflow
   },
   ASB: {
     effective_date: '2026-04-20',
     rates: {
-      floating: '5.19%',
+      floating: '5.09%',
       '6_month': '4.49%',
       '1_year': '4.49%',
       '18_month': '4.69%',
@@ -68,26 +75,28 @@ const SOURCE: Record<string, GeminiBank> = {
       '5_year': '5.65%',
     },
     cashback:
-      'Up to 0.90% for new securities (max $20,000); $5,000 for First Home Buyers (min $200k lending).',
+      'Up to 0.90% (max $20,000) for owner-occupied or investor/mixed lending ≥$200k; $5,000 for First Home Buyers (min $200k lending).',
     cashback_headline: '0.9%',
     source_date: '2026-04-20',
+    turnaround: { 'Retail': 5 }, // 5 business days for new lending + pre-approvals
   },
   BNZ: {
     effective_date: '2026-04-21',
     rates: {
       floating: '5.84%',
       '6_month': '4.49%',
-      '1_year': '4.59%',
+      '1_year': '4.49%',
       '18_month': '4.79%',
       '2_year': '4.89%',
       '3_year': '5.29%',
-      '4_year': '5.59%',
-      '5_year': '5.79%',
+      '4_year': '5.49%',
+      '5_year': '5.69%',
     },
     cashback:
-      '0.9% for new loans (min $200k); 1% for construction; Max $20k; $5k for First Home Buyers.',
+      'Up to 0.9% for new loans (min $200k); 1% for construction/turnkey; Max $20,000; $5,000 for First Home Buyers (min $250k lending).',
     cashback_headline: '0.9%',
     source_date: '2026-04-21',
+    turnaround: { 'New Applications': 6, 'Restructures': 5 },
   },
   Westpac: {
     effective_date: '2026-04-20',
@@ -102,26 +111,28 @@ const SOURCE: Record<string, GeminiBank> = {
       '5_year': '5.59%',
     },
     cashback:
-      '0.9% of new lending (min $100k, max $20,000); Minimum $5,000 for First Home Buyers (min $250k lending).',
+      '0.9% of new lending amount (min $100k, max $20,000); Minimum $5,000 for First Home Buyers (min $250k lending).',
     cashback_headline: '0.9%',
     source_date: '2026-04-17',
+    turnaround: { 'Retail': 5, 'Business': 10 },
   },
   Kiwibank: {
     effective_date: '2026-04-21',
     rates: {
       floating: '5.65%',
       '6_month': '4.45%',
-      '1_year': '4.65%',
+      '1_year': '4.45%',
       '18_month': 'Not offered', // Kiwibank doesn't offer an 18-month term
-      '2_year': '5.29%',
-      '3_year': '5.55%',
-      '4_year': '5.89%',
-      '5_year': '5.99%',
+      '2_year': '5.09%',
+      '3_year': '5.45%',
+      '4_year': '5.79%',
+      '5_year': '5.89%',
     },
     cashback:
-      '0.85% for refinance, 0.9% otherwise (max $20k); First Home Buyers eligible for min $5,000 (min $250k lending).',
+      '0.85% for refinance, 0.9% otherwise (max $20,000); Minimum $5,000 for First Home Buyers (min $250k lending).',
     cashback_headline: '0.9% · 0.85% refi',
     source_date: '2026-04-21',
+    // Turnaround omitted — Kiwibank TAT comes from the Hub portal, managed via internal workflow
   },
 };
 
@@ -181,6 +192,16 @@ async function main() {
         date: bank.source_date,
       },
     };
+
+    if (bank.turnaround) {
+      const now = new Date().toISOString();
+      const tatMap: Record<string, { days: number; source: 'auto'; updatedAt: string }> = {};
+      for (const [key, days] of Object.entries(bank.turnaround)) {
+        tatMap[key] = { days, source: 'auto', updatedAt: now };
+      }
+      // mergeBankData's shim merges per-key and preserves source='manual' entries
+      (patch as Partial<BankData> & { turnaround?: unknown }).turnaround = tatMap;
+    }
 
     const populated = Object.values(rateCard).filter(r => r.lte80 !== null).length;
     console.log(
