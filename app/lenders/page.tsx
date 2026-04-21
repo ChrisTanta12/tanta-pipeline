@@ -54,20 +54,20 @@ const BANK_ACCENT: Record<BankId, string> = {
   kiwibank:'#22c55e',   // green
 };
 
-type TermDef = { key: string; label: string };
+type TermDef = { key: string; label: string; groupStart?: boolean };
 
-const MAIN_TERMS: TermDef[] = [
-  { key: '6mo',  label: '6 Months' },
-  { key: '1y',   label: '1 Year' },
-  { key: '18mo', label: '18 Months' },
-  { key: '2y',   label: '2 Years' },
-  { key: '3y',   label: '3 Years' },
+// Single ordered list with groupStart flags marking where a visual gap
+// should appear: before 4y (start of the "long" group) and before floating.
+const ALL_TERMS: TermDef[] = [
+  { key: '6mo',      label: '6 Months' },
+  { key: '1y',       label: '1 Year' },
+  { key: '18mo',     label: '18 Months' },
+  { key: '2y',       label: '2 Years' },
+  { key: '3y',       label: '3 Years' },
+  { key: '4y',       label: '4 Years',    groupStart: true },
+  { key: '5y',       label: '5 Years' },
+  { key: 'floating', label: 'Floating',   groupStart: true },
 ];
-const LONG_TERMS: TermDef[] = [
-  { key: '4y', label: '4 Years' },
-  { key: '5y', label: '5 Years' },
-];
-const FLOATING_TERM: TermDef[] = [{ key: 'floating', label: 'Floating' }];
 
 function fmtRate(v: unknown): string {
   if (v === null || v === undefined || v === '') return '—';
@@ -379,10 +379,42 @@ export default function LendersPage() {
               </div>
             </div>
 
-            <div className="space-y-6">
-              <RateTable banks={banks} terms={MAIN_TERMS}   mode={rateMode} subtitle="Short & Mid Term · 6mo – 3y" />
-              <RateTable banks={banks} terms={LONG_TERMS}   mode={rateMode} subtitle="Long Term · 4y – 5y" />
-              <RateTable banks={banks} terms={FLOATING_TERM} mode={rateMode} subtitle="Floating" />
+            <div className="bg-white rounded-xl shadow-[0_10px_40px_rgba(0,0,0,0.04)] overflow-hidden">
+              <div className="overflow-x-auto">
+                <table className="w-full text-left border-collapse table-fixed">
+                  <thead>
+                    <tr className="bg-[#e5e8ed]">
+                      <th className="px-8 py-4 text-[10px] font-black text-[#44474e] uppercase tracking-widest w-[140px]">Term</th>
+                      {banks.map(b => (
+                        <th
+                          key={b.id}
+                          className="px-8 py-4 text-xs font-black uppercase tracking-widest text-center border-l border-[#c4c6cf]/20"
+                          style={{ color: BANK_ACCENT[b.id], fontFamily: 'Manrope, sans-serif' }}
+                        >
+                          {b.name}
+                        </th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-[#e5e8ed]">
+                    {ALL_TERMS.map((term, i) => (
+                      <tr
+                        key={term.key}
+                        className={`transition-colors hover:bg-[#031f41]/5 ${i % 2 === 1 ? 'bg-[#031f41]/[0.02]' : ''} ${term.groupStart ? 'border-t-4 border-t-[#dfe3e8]' : ''}`}
+                      >
+                        <td className="px-8 py-4 font-bold text-[#031f41]" style={{ fontFamily: 'Manrope, sans-serif' }}>
+                          {term.label}
+                        </td>
+                        {banks.map(b => (
+                          <td key={`${b.id}-${term.key}`} className="px-8 py-4 text-center border-l border-[#c4c6cf]/5">
+                            <CellValue cell={rateForCell(b, rateMode, term.key)} />
+                          </td>
+                        ))}
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
             </div>
             <div className="mt-4 space-y-1">
               <p className="text-[10px] text-[#44474e]">
@@ -459,59 +491,6 @@ function Row({ label, children }: { label: string; children: React.ReactNode }) 
     <div className="flex justify-between items-center border-b border-[#c4c6cf]/20 pb-2 min-h-[28px]">
       <span className="text-[11px] text-[#44474e] font-medium">{label}</span>
       {children}
-    </div>
-  );
-}
-
-/**
- * Sub-table of the Comprehensive Rate Card. Renders its own header so
- * short/mid, long and floating sections each read as standalone groupings.
- */
-function RateTable({
-  banks, terms, mode, subtitle,
-}: {
-  banks: Bank[];
-  terms: TermDef[];
-  mode: RateMode;
-  subtitle: string;
-}) {
-  return (
-    <div>
-      <div className="text-[10px] font-black uppercase tracking-[0.3em] text-[#44474e] mb-2 pl-1">{subtitle}</div>
-      <div className="bg-white rounded-xl shadow-[0_10px_40px_rgba(0,0,0,0.04)] overflow-hidden">
-        <div className="overflow-x-auto">
-          <table className="w-full text-left border-collapse">
-            <thead>
-              <tr className="bg-[#e5e8ed]">
-                <th className="px-8 py-4 text-[10px] font-black text-[#44474e] uppercase tracking-widest">Term</th>
-                {banks.map(b => (
-                  <th
-                    key={b.id}
-                    className="px-8 py-4 text-xs font-black uppercase tracking-widest text-center border-l border-[#c4c6cf]/20"
-                    style={{ color: BANK_ACCENT[b.id], fontFamily: 'Manrope, sans-serif' }}
-                  >
-                    {b.name}
-                  </th>
-                ))}
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-[#e5e8ed]">
-              {terms.map((term, i) => (
-                <tr key={term.key} className={`transition-colors hover:bg-[#031f41]/5 ${i % 2 === 1 ? 'bg-[#031f41]/[0.02]' : ''}`}>
-                  <td className="px-8 py-4 font-bold text-[#031f41]" style={{ fontFamily: 'Manrope, sans-serif' }}>
-                    {term.label}
-                  </td>
-                  {banks.map(b => (
-                    <td key={`${b.id}-${term.key}`} className="px-8 py-4 text-center border-l border-[#c4c6cf]/5">
-                      <CellValue cell={rateForCell(b, mode, term.key)} />
-                    </td>
-                  ))}
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      </div>
     </div>
   );
 }
