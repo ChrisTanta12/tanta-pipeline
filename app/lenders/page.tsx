@@ -104,6 +104,35 @@ function isStale(iso: string | undefined, thresholdDays = 14): boolean {
  * falls back to an empty list (the UI shows "—"). Keeps the original keys so
  * the caller can distinguish e.g. "Priority Retail" from "Other Retail".
  */
+/**
+ * Read-side shim: accepts either the new TurnaroundMap shape
+ * (keyed by display label with { days, source, updatedAt } values)
+ * OR the legacy `{ retail: number, business: number }` shape and
+ * returns a TurnaroundMap the rest of the UI can treat uniformly.
+ *
+ * The write-side shim in mergeBankData (app/lib/db.ts) converts
+ * legacy patches on write, but rows that haven't been re-written
+ * since the new shape landed still have the legacy format. This
+ * read-side normalisation guarantees the card displays turnaround
+ * data regardless of the row's vintage.
+ */
+function normaliseTat(raw: unknown): TurnaroundMap | undefined {
+  if (!raw || typeof raw !== 'object') return undefined;
+  const obj = raw as Record<string, unknown>;
+  const out: TurnaroundMap = {};
+  for (const [key, val] of Object.entries(obj)) {
+    if (val && typeof val === 'object' && 'days' in val) {
+      out[key] = val as TurnaroundEntry;
+    } else if (typeof val === 'number' || typeof val === 'string') {
+      // Legacy scalar: promote to a TurnaroundEntry. updatedAt left empty
+      // so the "updated …" stamp doesn't render a fake timestamp.
+      const label = key === 'retail' ? 'Retail' : key === 'business' ? 'Business' : key;
+      out[label] = { days: val, source: 'auto', updatedAt: '' };
+    }
+  }
+  return Object.keys(out).length > 0 ? out : undefined;
+}
+
 function pickRetailEntries(tmap: TurnaroundMap | undefined): Array<{ key: string; entry: TurnaroundEntry }> {
   if (!tmap) return [];
   const out: Array<{ key: string; entry: TurnaroundEntry }> = [];
@@ -599,7 +628,7 @@ function TurnaroundRow({ bank, onOpen }: { bank: Bank; onOpen: () => void }) {
   // Persisted shape is always TurnaroundMap after the db shim normalises on
   // every write (see mergeBankData in app/lib/db.ts). The type union allows
   // LegacyTurnaround only to keep parser-write paths typechecked.
-  const tmap = bank.data.turnaround as TurnaroundMap | undefined;
+  const tmap = normaliseTat(bank.data.turnaround);
   const retails = pickRetailEntries(tmap);
 
   let display: React.ReactNode = '—';
@@ -684,7 +713,7 @@ function TatDetailModal({
   onSaved: (turnaround: TurnaroundMap) => void;
 }) {
   // Narrow the union for the modal. Persisted shape is always TurnaroundMap.
-  const tmap = (bank.data.turnaround as TurnaroundMap | undefined) ?? {};
+  const tmap = normaliseTat(bank.data.turnaround) ?? {};
   const entries = Object.entries(tmap);
 
   const [pinInput, setPinInput] = useState('');
