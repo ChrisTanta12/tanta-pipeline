@@ -12,38 +12,36 @@ type Bank = {
   cardedUpdatedAt?: string | null;
 };
 type CustomerType = 'existing' | 'new';
-type RateMode = 'fixed' | 'floating';
+type RateMode = 'special' | 'carded';
 
-// Discrepancy threshold: ≥5 basis points (0.05%) between broker and carded.
-const DISCREPANCY_BPS = 5;
+/** Per-cell rate values for the current view — either a single number (floating in carded mode) or an lte80/gt80 split. */
+type CellRates = { lte80: number | null; gt80: number | null; single: number | null };
 
-/** Returns the carded rate for a given term key, or null if the scraper didn't capture it. */
-function cardedRateFor(bank: Bank, termKey: string, kind: 'lte80' | 'gt80'): number | null {
-  if (termKey === 'floating') return bank.cardedData?.rateCard.floating ?? null;
-  const v = bank.cardedData?.rateCard[kind]?.[termKey];
-  return typeof v === 'number' ? v : null;
-}
-
-/** Returns the broker rate as a number if it's numeric, else null. */
-function brokerRateFor(bank: Bank, termKey: string, kind: 'lte80' | 'gt80'): number | null {
-  const r = bank.data.rateCard?.[termKey];
-  const v = kind === 'lte80' ? r?.lte80 : r?.gt80;
-  return typeof v === 'number' ? v : null;
-}
-
-type CellComparison = {
-  broker: number | null;
-  carded: number | null;
-  deltaBps: number | null;   // |broker - carded| in basis points, null if either missing
-  discrepant: boolean;       // delta >= DISCREPANCY_BPS
-};
-
-function compareCell(broker: number | null, carded: number | null): CellComparison {
-  if (broker === null || carded === null) {
-    return { broker, carded, deltaBps: null, discrepant: false };
+function rateForCell(bank: Bank, mode: RateMode, term: string): CellRates {
+  if (mode === 'special') {
+    const r = bank.data.rateCard?.[term];
+    if (!r) return { lte80: null, gt80: null, single: null };
+    if (term === 'floating') {
+      const f = typeof r.lte80 === 'number' ? r.lte80 : null;
+      return { lte80: null, gt80: null, single: f };
+    }
+    return {
+      lte80: typeof r.lte80 === 'number' ? r.lte80 : null,
+      gt80: typeof r.gt80 === 'number' ? r.gt80 : null,
+      single: null,
+    };
   }
-  const bps = Math.round(Math.abs(broker - carded) * 100);
-  return { broker, carded, deltaBps: bps, discrepant: bps >= DISCREPANCY_BPS };
+  // carded
+  const cd = bank.cardedData?.rateCard;
+  if (!cd) return { lte80: null, gt80: null, single: null };
+  if (term === 'floating') {
+    return { lte80: null, gt80: null, single: cd.floating ?? null };
+  }
+  return {
+    lte80: cd.lte80?.[term] ?? null,
+    gt80: cd.gt80?.[term] ?? null,
+    single: null,
+  };
 }
 
 const BANK_ORDER: BankId[] = ['westpac', 'asb', 'bnz', 'anz', 'kiwibank'];
@@ -57,13 +55,14 @@ const BANK_ACCENT: Record<BankId, string> = {
 };
 
 const TERM_ORDER: Array<{ key: string; label: string }> = [
-  { key: '6mo',  label: '6 Months' },
-  { key: '1y',   label: '1 Year' },
-  { key: '18mo', label: '18 Months' },
-  { key: '2y',   label: '2 Years' },
-  { key: '3y',   label: '3 Years' },
-  { key: '4y',   label: '4 Years' },
-  { key: '5y',   label: '5 Years' },
+  { key: 'floating', label: 'Floating' },
+  { key: '6mo',     label: '6 Months' },
+  { key: '1y',      label: '1 Year' },
+  { key: '18mo',    label: '18 Months' },
+  { key: '2y',      label: '2 Years' },
+  { key: '3y',      label: '3 Years' },
+  { key: '4y',      label: '4 Years' },
+  { key: '5y',      label: '5 Years' },
 ];
 
 function fmtRate(v: unknown): string {
@@ -138,7 +137,7 @@ export default function LendersPage() {
   const [error, setError] = useState('');
   const [fetchedAt, setFetchedAt] = useState('');
   const [customer, setCustomer] = useState<CustomerType>('new');
-  const [rateMode, setRateMode] = useState<RateMode>('fixed');
+  const [rateMode, setRateMode] = useState<RateMode>('special');
 
   // TAT-detail modal state: which bank we're inspecting (if any), and a
   // session-scoped flag remembering whether the TAT PIN has been unlocked.
@@ -301,6 +300,17 @@ export default function LendersPage() {
                         {b.data.productFeatures?.minRepaymentFreq ?? '—'}
                       </span>
                     </Row>
+                    {typeof b.data.cashback?.summary === 'string' && b.data.cashback.summary.trim() !== '' && (
+                      <div className="pt-2">
+                        <div className="text-[10px] text-[#44474e] font-medium uppercase tracking-wider mb-1">Cashback</div>
+                        <div
+                          className="text-[11px] text-[#031f41] leading-snug line-clamp-3 cursor-help"
+                          title={b.data.cashback.summary}
+                        >
+                          {b.data.cashback.summary}
+                        </div>
+                      </div>
+                    )}
                   </div>
                   <div className="mt-6 flex gap-2">
                     <button
@@ -338,20 +348,20 @@ export default function LendersPage() {
               </div>
               <div className="bg-[#f1f4f9] p-1 rounded-xl flex gap-1">
                 <button
-                  onClick={() => setRateMode('fixed')}
+                  onClick={() => setRateMode('special')}
                   className={`px-3 py-1 text-xs font-bold rounded transition-all ${
-                    rateMode === 'fixed' ? 'bg-white shadow-sm text-[#031f41]' : 'text-[#44474e] hover:text-[#031f41]'
+                    rateMode === 'special' ? 'bg-white shadow-sm text-[#031f41]' : 'text-[#44474e] hover:text-[#031f41]'
                   }`}
                 >
-                  Fixed Term
+                  Special
                 </button>
                 <button
-                  onClick={() => setRateMode('floating')}
+                  onClick={() => setRateMode('carded')}
                   className={`px-3 py-1 text-xs font-bold rounded transition-all ${
-                    rateMode === 'floating' ? 'bg-white shadow-sm text-[#031f41]' : 'text-[#44474e] hover:text-[#031f41]'
+                    rateMode === 'carded' ? 'bg-white shadow-sm text-[#031f41]' : 'text-[#44474e] hover:text-[#031f41]'
                   }`}
                 >
-                  Floating
+                  Carded
                 </button>
               </div>
             </div>
@@ -363,63 +373,27 @@ export default function LendersPage() {
                     <tr className="bg-[#e5e8ed]">
                       <th className="px-8 py-5 text-[10px] font-black text-[#44474e] uppercase tracking-widest">Term Duration</th>
                       {banks.map(b => (
-                        <th key={b.id} className="px-8 py-5 text-[10px] font-black text-[#44474e] uppercase tracking-widest text-center border-l border-[#c4c6cf]/20">
-                          {b.name} <span className="text-[#74777f] font-medium normal-case">(Spec / Std)</span>
+                        <th
+                          key={b.id}
+                          className="px-8 py-5 text-xs font-black uppercase tracking-widest text-center border-l border-[#c4c6cf]/20"
+                          style={{ color: BANK_ACCENT[b.id], fontFamily: 'Manrope, sans-serif' }}
+                        >
+                          {b.name}
                         </th>
                       ))}
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-[#e5e8ed]">
-                    {(rateMode === 'fixed' ? TERM_ORDER : [{ key: 'floating', label: 'Floating' }]).map((term, i) => (
+                    {TERM_ORDER.map((term, i) => (
                       <tr key={term.key} className={`transition-colors hover:bg-[#031f41]/5 ${i % 2 === 1 ? 'bg-[#031f41]/[0.02]' : ''}`}>
                         <td className="px-8 py-4 font-bold text-[#031f41]" style={{ fontFamily: 'Manrope, sans-serif' }}>
                           {term.label}
                         </td>
                         {banks.map(b => {
-                          const r = b.data.rateCard?.[term.key];
-                          const lteCmp = compareCell(brokerRateFor(b, term.key, 'lte80'), cardedRateFor(b, term.key, 'lte80'));
-                          const gtCmp = compareCell(brokerRateFor(b, term.key, 'gt80'), cardedRateFor(b, term.key, 'gt80'));
-
-                          // 5-year fallback: when the broker doesn't publish a
-                          // 5y rate (common — long rates are rarely in broker
-                          // update emails), show the carded rate as the primary
-                          // number with a muted "(carded)" label. Suppress the
-                          // discrepancy flag for the fallen-back tier because
-                          // broker-vs-carded would trivially "agree" (there's
-                          // no broker side).
-                          const lteFallback = term.key === '5y' && lteCmp.broker === null && lteCmp.carded !== null;
-                          const gtFallback  = term.key === '5y' && gtCmp.broker  === null && gtCmp.carded  !== null;
-                          const lteDisplay = lteFallback ? lteCmp.carded : r?.lte80;
-                          const gtDisplay  = gtFallback  ? gtCmp.carded  : r?.gt80;
-                          const anyDiscrepancy =
-                            (lteCmp.discrepant && !lteFallback) || (gtCmp.discrepant && !gtFallback);
-                          const maxDelta = Math.max(
-                            (lteFallback ? 0 : (lteCmp.deltaBps ?? 0)),
-                            (gtFallback  ? 0 : (gtCmp.deltaBps  ?? 0)),
-                          );
-                          const title = [
-                            `lte80: broker=${fmtRate(lteCmp.broker)} carded=${fmtRate(lteCmp.carded)}${lteCmp.deltaBps !== null ? ` Δ${lteCmp.deltaBps}bps` : ''}${lteFallback ? ' (fallback to carded)' : ''}`,
-                            `gt80: broker=${fmtRate(gtCmp.broker)} carded=${fmtRate(gtCmp.carded)}${gtCmp.deltaBps !== null ? ` Δ${gtCmp.deltaBps}bps` : ''}${gtFallback ? ' (fallback to carded)' : ''}`,
-                          ].join('\n');
+                          const cell = rateForCell(b, rateMode, term.key);
                           return (
-                            <td key={`${b.id}-${term.key}`} className="px-8 py-4 text-center border-l border-[#c4c6cf]/5 relative" title={title}>
-                              {anyDiscrepancy && (
-                                <span
-                                  className="absolute top-1 right-1 w-2 h-2 rounded-full bg-[#f59e0b]"
-                                  title={`Broker vs carded differs by ${maxDelta}bps`}
-                                />
-                              )}
-                              <div className="flex items-baseline justify-center gap-2">
-                                <span className="text-sm font-extrabold text-[#031f41]">{fmtRate(lteDisplay)}</span>
-                                {lteFallback && <span className="text-[8px] text-[#a1a5ab] uppercase tracking-wider">(carded)</span>}
-                                <span className="text-[10px] text-[#44474e] font-medium">/ {fmtRate(gtDisplay)}</span>
-                                {gtFallback && <span className="text-[8px] text-[#a1a5ab] uppercase tracking-wider">(carded)</span>}
-                              </div>
-                              <div className="flex items-baseline justify-center gap-2 mt-0.5">
-                                <span className="text-[10px] text-[#74777f]">{fmtRate(lteCmp.carded)}</span>
-                                <span className="text-[9px] text-[#a1a5ab]">/ {fmtRate(gtCmp.carded)}</span>
-                                <span className="text-[8px] text-[#a1a5ab] uppercase tracking-wider ml-1">carded</span>
-                              </div>
+                            <td key={`${b.id}-${term.key}`} className="px-8 py-4 text-center border-l border-[#c4c6cf]/5">
+                              <CellValue cell={cell} />
                             </td>
                           );
                         })}
@@ -431,7 +405,9 @@ export default function LendersPage() {
             </div>
             <div className="mt-4 flex justify-between">
               <p className="text-[10px] text-[#44474e] italic">
-                * Top row: broker-email rate (Spec ≤80% LVR / Std &gt;80% LVR). Bottom row: carded rate from interest.co.nz. Amber dot flags ≥{DISCREPANCY_BPS} bps difference.
+                {rateMode === 'special'
+                  ? '* Broker-channel Special rates (LVR ≤80% / >80% LVR shown where both tiers are published). Source: Gmail ingest via Gemini.'
+                  : '* Carded / advertised rates (LVR ≤80% / >80% LVR where distinguished). Source: interest.co.nz.'}
               </p>
               <p className="text-[10px] text-[#44474e] italic">
                 Updated {lastRefresh}
@@ -500,6 +476,32 @@ function Row({ label, children }: { label: string; children: React.ReactNode }) 
       {children}
     </div>
   );
+}
+
+/**
+ * Single rate-card cell value for the simplified Carded/Special view. Shows:
+ *   - A single rate (e.g. floating), OR
+ *   - "X / Y" where both LVR tiers are present, OR
+ *   - Just the one tier that is present, OR
+ *   - em-dash if neither.
+ */
+function CellValue({ cell }: { cell: { lte80: number | null; gt80: number | null; single: number | null } }) {
+  if (cell.single !== null) {
+    return <span className="text-sm font-extrabold text-[#031f41]">{fmtRate(cell.single)}</span>;
+  }
+  if (cell.lte80 !== null && cell.gt80 !== null) {
+    return (
+      <div className="flex items-baseline justify-center gap-2">
+        <span className="text-sm font-extrabold text-[#031f41]">{fmtRate(cell.lte80)}</span>
+        <span className="text-[10px] text-[#44474e] font-medium">/ {fmtRate(cell.gt80)}</span>
+      </div>
+    );
+  }
+  const only = cell.lte80 ?? cell.gt80;
+  if (only !== null) {
+    return <span className="text-sm font-extrabold text-[#031f41]">{fmtRate(only)}</span>;
+  }
+  return <span className="text-sm text-[#a1a5ab]">—</span>;
 }
 
 /**
