@@ -4,7 +4,7 @@ One screen. All active projects. The "Next action" column is the only thing you 
 
 | # | Project | Status | Next action | File |
 |---|---|---|---|---|
-| 1 | KiwiSaver Strategy Session | Deck 85% — missing Projections slide | Draft static Projections slide (fixed example couple) | [kiwisaver-session.md](./kiwisaver-session.md) |
+| 1 | KiwiSaver Strategy Session | **In client trial** — deck shipped | Run 3 sessions, then note what landed | [kiwisaver-session.md](./kiwisaver-session.md) |
 | 2 | Marketing plan | Not started | Brain-dump what "marketing plan" means to you — 10 min | [marketing-plan.md](./marketing-plan.md) |
 | 3 | Meta ad campaign | Not started | Decide: is this dependent on #2, or runnable standalone? | [meta-ad-campaign.md](./meta-ad-campaign.md) |
 | 4 | Profit-First bank statement tool | Not started | List the 5 Profit-First buckets + the bank you'll export from | [profit-first-tool.md](./profit-first-tool.md) |

@@ -1,16 +1,13 @@
 # KiwiSaver Strategy Session
 
 ## Status
-Deck is ~85% built (13 slides, Canva). One major slide missing (Projections), three slides need content/cleanup, plus minor copy fixes. Not yet ready to deliver to clients.
+Deck complete. In client trial — running real sessions to see what lands and what doesn't.
 
 ## Next action
-Draft the missing **Projections slide (game-plan item 4)** as a static slide first — answer "where will you get to / is the bare minimum enough / how to choose the best option." Use a fixed example couple (e.g. age 35, $50k balance, 4% contribution) with three projection lines: Default, Recommended, Optimal. Ship static. The interactive calculator is a separate project — see deferred ideas below.
+**Run 3 client sessions**, then sit down for 20 min to note: what resonated, what got blank stares, what you wish you had in the moment. Only *then* decide what to change.
 
 ## Open questions / blockers
-- **Provider list (Slide 8):** 25 providers / 331 funds shown, but only 7 logos. Are those 7 the ones Tanta works with? Needs explicit labelling so clients aren't confused.
-- **Review cadence (Slide 12):** "We will review x times per 2 years" — fill in the actual number.
-- **Slide order vs. agenda:** Fees, Legal Bits, Thank You aren't in the game plan timing. Decide: add to agenda, or reposition.
-- **Slide 11 title vs. content:** "Why do some growth funds suck" promises a specific argument; current content is generic asset-mix explanation. Decide: rewrite content, or soften title to match.
+None. Let the trial answer them.
 
 ## Decisions made (don't relitigate)
 - Session length: 30–45 mins, 5 sections per game plan
@@ -18,26 +15,19 @@ Draft the missing **Projections slide (game-plan item 4)** as a static slide fir
 - Scope: KiwiSaver & Investment Products only (per Legal Bits slide)
 - Sign-up requirements: IRD number + ID
 - Sessions will be recorded so client can focus
+- Projections shown as static slides (3 salary bands) — interactive calculator stays parked until trial proves need
+- Fund-fit framing: gym metaphor → four personality types (ethical / innovation / low-fee / active)
 
-## Deferred ideas (don't do now)
-- **Interactive internal calculator/projection web page.** Significant scope. Park until static deck ships and we see whether projections feel limiting in actual client sessions. Then re-evaluate.
-
-## Slide-by-slide gaps
-| # | Slide | Action |
-|---|---|---|
-| 5 | Current Situation | Remove designer note "This will stage 2 compliance gather information" |
-| 8 | 25 Providers / 331 Funds | Label which logos are "providers Tanta works with" |
-| 9 | What do you care about? (Ethical Investing) | Either populate with content or cut |
-| 11 | Why do some growth funds suck | Rewrite content to match title, OR change title |
-| 12 | Next Steps | Replace "x times per 2 years" with real number |
-| — | Projections (missing) | Build new slide — see Next action |
+## Deferred ideas (don't revive without trial evidence)
+- Interactive calculator/projection web page — park until 5+ real sessions prove static slides aren't enough
+- Salary bands beyond $60k/$80k/$120k — only if client feedback demands it
 
 ## Context dump
-- Source: Canva deck, exported as PNGs (sent into Claude Code chat session 2026-04-22)
-- Deck branding: Tanta Mortgage Brokers, blue gradient, "Strategy Session" header on most slides
-- Game plan section timings: 5 / 10 / 10 / 10 / 5–10 mins
-- Compliance reference: Authority & Declaration form on Legal Bits slide; Privacy Act 2020
-- Related project file: `projects/marketing-plan.md` (referrals from this session feed marketing pipeline)
+- Canva deck, 14 slides incl. new Projections slide + populated Slide 9
+- Branding: Tanta Mortgage Brokers, blue gradient, "Strategy Session" header
+- Projections assumptions: 3.5% employee min, 3.5% employer match, $521 govt, Balanced 4.5% / Growth 6.5%, 30 years to 65
+- Compliance: Authority & Declaration form on Legal Bits slide; Privacy Act 2020
+- Speaker note: avoid "old white boys" line in recorded sessions — neutral fund-category language only
 
 ## Last touched
-2026-04-22
+2026-04-24
