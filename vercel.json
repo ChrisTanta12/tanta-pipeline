@@ -4,10 +4,6 @@
     {
       "path": "/api/scrape-interest",
       "schedule": "0 20 * * *"
-    },
-    {
-      "path": "/api/scrape-swap-rates",
-      "schedule": "30 20 * * *"
     }
   ]
 }

@@ -1,4 +1,5 @@
 import * as XLSX from 'xlsx';
+import { spawnSync } from 'child_process';
 
 /**
  * RBNZ "B2 — Wholesale interest rates (daily close)" XLSX. The official
@@ -53,25 +54,42 @@ function excelSerialToISODate(serial: number): string | null {
 }
 
 /**
- * Downloads the RBNZ daily close workbook and extracts the most recent
- * observation row. One request, no retries.
+ * Downloads the RBNZ daily close workbook via curl (one shell-out) and
+ * extracts the most recent observation row.
+ *
+ * We use curl rather than node's built-in fetch because RBNZ sits behind
+ * Cloudflare and its WAF blocks node's TLS/HTTP-2 fingerprint with 403
+ * even when User-Agent and headers are spoofed. curl gets through fine.
+ * curl ships with Windows 10+ at C:\Windows\System32\curl.exe so this is
+ * portable on the office PC.
  */
 export async function scrapeSwapRates(): Promise<SwapRateSnapshot> {
-  const res = await fetch(RBNZ_B2_URL, {
-    headers: {
-      'User-Agent': USER_AGENT,
-      Accept:
-        'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/octet-stream,*/*;q=0.8',
-      'Accept-Language': 'en-NZ,en;q=0.9',
-      'Sec-Fetch-Dest': 'document',
-      'Sec-Fetch-Mode': 'navigate',
-      'Sec-Fetch-Site': 'none',
-    },
-    cache: 'no-store',
-    redirect: 'follow',
-  });
-  if (!res.ok) throw new Error(`RBNZ B2 returned ${res.status}`);
-  const buf = Buffer.from(await res.arrayBuffer());
+  const result = spawnSync(
+    'curl',
+    [
+      '-sSL',
+      '--max-time', '30',
+      '-A', USER_AGENT,
+      '-H', 'Accept: */*',
+      '-H', 'Accept-Language: en-NZ,en;q=0.9',
+      '--output', '-',
+      RBNZ_B2_URL,
+    ],
+    { encoding: 'buffer', maxBuffer: 50 * 1024 * 1024 },
+  );
+  if (result.error) throw new Error(`curl failed: ${result.error.message}`);
+  if (result.status !== 0) {
+    const stderr = result.stderr?.toString('utf8') ?? '';
+    throw new Error(`curl exited ${result.status}: ${stderr.slice(0, 200)}`);
+  }
+  const buf = result.stdout as Buffer;
+  if (!buf || buf.length === 0) throw new Error('curl returned empty body');
+  // Sanity check the magic bytes — XLSX files start with PK (ZIP).
+  if (buf[0] !== 0x50 || buf[1] !== 0x4b) {
+    throw new Error(
+      `Unexpected response (first bytes ${buf[0].toString(16)} ${buf[1].toString(16)}); RBNZ may have returned an error page`,
+    );
+  }
   return parseRbnzB2Workbook(buf);
 }
 
