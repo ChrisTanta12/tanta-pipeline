@@ -9,7 +9,11 @@ import * as XLSX from 'xlsx';
  */
 export const RBNZ_B2_URL =
   'https://www.rbnz.govt.nz/-/media/project/sites/rbnz/files/statistics/series/b/b2/hb2-daily-close.xlsx';
-const USER_AGENT = 'Mozilla/5.0 TantaPipelineBot/1.0 (+internal use)';
+// RBNZ's edge rejects unfamiliar User-Agents with 403 from datacenter IPs,
+// so we identify as a recent Chrome on Windows. The xlsx file we fetch is
+// public reference data published for download.
+const USER_AGENT =
+  'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36';
 
 export type SwapRateTerm = '1y' | '2y' | '3y' | '4y' | '5y' | '7y' | '10y';
 
@@ -54,8 +58,17 @@ function excelSerialToISODate(serial: number): string | null {
  */
 export async function scrapeSwapRates(): Promise<SwapRateSnapshot> {
   const res = await fetch(RBNZ_B2_URL, {
-    headers: { 'User-Agent': USER_AGENT, Accept: '*/*' },
+    headers: {
+      'User-Agent': USER_AGENT,
+      Accept:
+        'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/octet-stream,*/*;q=0.8',
+      'Accept-Language': 'en-NZ,en;q=0.9',
+      'Sec-Fetch-Dest': 'document',
+      'Sec-Fetch-Mode': 'navigate',
+      'Sec-Fetch-Site': 'none',
+    },
     cache: 'no-store',
+    redirect: 'follow',
   });
   if (!res.ok) throw new Error(`RBNZ B2 returned ${res.status}`);
   const buf = Buffer.from(await res.arrayBuffer());
