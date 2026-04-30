@@ -112,6 +112,36 @@ export async function getLatestSwapRates(): Promise<SwapRateRow | null> {
   };
 }
 
+/**
+ * Returns the swap rate row for a given date, or the most recent earlier
+ * row if that exact date doesn't exist (weekend, holiday, gap). The
+ * calculator uses this for "wholesale rate when client fixed" — adviser
+ * supplies fix-end-date and original-term, we derive fixation date and
+ * look up the historical rate from the backfilled archive.
+ */
+export async function getSwapRatesForDate(date: string): Promise<SwapRateRow | null> {
+  const { rows } = await sql<{
+    observation_date: string;
+    rates: Record<string, number>;
+    source: string;
+    fetched_at: string;
+  }>`
+    SELECT observation_date, rates, source, fetched_at
+    FROM swap_rates
+    WHERE observation_date <= ${date}::date
+    ORDER BY observation_date DESC
+    LIMIT 1
+  `;
+  if (rows.length === 0) return null;
+  const r = rows[0];
+  return {
+    observationDate: r.observation_date,
+    rates: r.rates,
+    source: r.source,
+    fetchedAt: r.fetched_at,
+  };
+}
+
 export async function upsertBank(id: BankId, name: string, data: BankData): Promise<void> {
   await sql`
     INSERT INTO banks (id, name, data, updated_at)
