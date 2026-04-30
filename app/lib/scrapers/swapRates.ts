@@ -170,3 +170,93 @@ export function parseRbnzB2Workbook(buf: Buffer): SwapRateSnapshot {
     warnings,
   };
 }
+
+export type SwapRateRow = {
+  observationDate: string;
+  rates: Record<string, number>;
+};
+
+/**
+ * Pure parser that returns EVERY data row in the workbook, not just the
+ * latest. Used by the one-shot backfill script to seed historical swap
+ * rates into Postgres so the calculator can look up "wholesale rate when
+ * client fixed" by date.
+ */
+export function parseRbnzB2WorkbookAllRows(buf: Buffer): {
+  source: string;
+  rows: SwapRateRow[];
+  warnings: string[];
+} {
+  const warnings: string[] = [];
+  const wb = XLSX.read(buf, { type: 'buffer', cellDates: false });
+  const sheetName = wb.SheetNames.find((n) => n.toLowerCase() === 'data') ?? wb.SheetNames[0];
+  if (!sheetName) throw new Error('RBNZ B2 workbook has no sheets');
+  const ws = wb.Sheets[sheetName];
+  const rows = XLSX.utils.sheet_to_json<unknown[]>(ws, { header: 1, raw: true });
+  if (rows.length <= FIRST_DATA_ROW) throw new Error('RBNZ B2 workbook has no data rows');
+
+  const seriesIdRow = rows[SERIES_ID_ROW];
+  if (!Array.isArray(seriesIdRow) || seriesIdRow.length < 10) {
+    throw new Error('RBNZ B2 series-id header row missing or too short');
+  }
+
+  const colToTerm: Record<number, SwapRateTerm> = {};
+  for (let i = 0; i < seriesIdRow.length; i++) {
+    const sid = String(seriesIdRow[i] ?? '').trim();
+    if (sid in SERIES_TO_TERM) colToTerm[i] = SERIES_TO_TERM[sid];
+  }
+  if (Object.keys(colToTerm).length === 0) {
+    throw new Error('No swap rate series IDs found in RBNZ B2 workbook');
+  }
+
+  const out: SwapRateRow[] = [];
+  for (let r = FIRST_DATA_ROW; r < rows.length; r++) {
+    const row = rows[r];
+    if (!Array.isArray(row) || row.length === 0) continue;
+    const dateCell = row[0];
+    if (typeof dateCell !== 'number') continue;
+    const iso = excelSerialToISODate(dateCell);
+    if (!iso) continue;
+
+    const rowRates: Record<string, number> = {};
+    for (const colIdxStr of Object.keys(colToTerm)) {
+      const colIdx = Number(colIdxStr);
+      const v = row[colIdx];
+      if (typeof v === 'number' && Number.isFinite(v)) rowRates[colToTerm[colIdx]] = v;
+    }
+    if (Object.keys(rowRates).length > 0) out.push({ observationDate: iso, rates: rowRates });
+  }
+
+  if (out.length === 0) throw new Error('No swap rate rows parsed from RBNZ B2 workbook');
+  return { source: RBNZ_B2_URL, rows: out, warnings };
+}
+
+/**
+ * Curl-fetches the workbook (same path as the daily scraper) and returns
+ * every historical row. Used by the backfill script.
+ */
+export async function scrapeAllSwapRates(): Promise<{ source: string; rows: SwapRateRow[]; warnings: string[] }> {
+  const result = spawnSync(
+    'curl',
+    [
+      '-sSL', '--max-time', '60',
+      '-A', USER_AGENT,
+      '-H', 'Accept: */*',
+      '-H', 'Accept-Language: en-NZ,en;q=0.9',
+      '--output', '-',
+      RBNZ_B2_URL,
+    ],
+    { encoding: 'buffer', maxBuffer: 50 * 1024 * 1024 },
+  );
+  if (result.error) throw new Error(`curl failed: ${result.error.message}`);
+  if (result.status !== 0) {
+    const stderr = result.stderr?.toString('utf8') ?? '';
+    throw new Error(`curl exited ${result.status}: ${stderr.slice(0, 200)}`);
+  }
+  const buf = result.stdout as Buffer;
+  if (!buf || buf.length === 0) throw new Error('curl returned empty body');
+  if (buf[0] !== 0x50 || buf[1] !== 0x4b) {
+    throw new Error(`Unexpected response; RBNZ may have returned an error page`);
+  }
+  return parseRbnzB2WorkbookAllRows(buf);
+}

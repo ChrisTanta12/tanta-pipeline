@@ -205,6 +205,20 @@ function calculateBreakFee(
   };
 }
 
+const ORIGINAL_TERM_OPTIONS: Array<{ value: string; label: string; months: number }> = [
+  { value: '6mo', label: '6 months', months: 6 },
+  { value: '1y', label: '1 year', months: 12 },
+  { value: '18mo', label: '18 months', months: 18 },
+  { value: '2y', label: '2 years', months: 24 },
+  { value: '3y', label: '3 years', months: 36 },
+  { value: '4y', label: '4 years', months: 48 },
+  { value: '5y', label: '5 years', months: 60 },
+];
+
+function originalTermMonths(key: string): number {
+  return ORIGINAL_TERM_OPTIONS.find((o) => o.value === key)?.months ?? 24;
+}
+
 export default function BreakFeeCalculator() {
   const [balance, setBalance] = useState<number>(500000);
   const [fixedRate, setFixedRate] = useState<number>(6.5);
@@ -212,6 +226,7 @@ export default function BreakFeeCalculator() {
   const [swapAtFixation, setSwapAtFixation] = useState<number>(5.0);
   const [swapToday, setSwapToday] = useState<number>(4.0);
   const [fixEndDate, setFixEndDate] = useState<string>('');
+  const [originalTerm, setOriginalTerm] = useState<string>('2y');
   const [selectedBank, setSelectedBank] = useState<BankId | 'all'>('all');
 
   // Default the end date client-side to avoid SSR/CSR hydration drift.
@@ -265,6 +280,60 @@ export default function BreakFeeCalculator() {
     const interp = interpolateSwapRate(live.rates, remainingMonths);
     if (interp != null) setSwapToday(parseFloat(interp.toFixed(2)));
   }, [live, remainingMonths]);
+
+  // Compute the fixation date by subtracting the original term from the fix
+  // end date. Used to look up the historical swap rate from the backfilled
+  // archive.
+  const fixationDate = useMemo(() => {
+    if (!fixEndDate) return null;
+    const end = new Date(fixEndDate + 'T00:00:00');
+    if (isNaN(end.getTime())) return null;
+    end.setMonth(end.getMonth() - originalTermMonths(originalTerm));
+    return end.toISOString().slice(0, 10);
+  }, [fixEndDate, originalTerm]);
+
+  // Auto-fill "swap rate when client fixed" by looking up the historical row
+  // for the fixation date and picking the curve point matching the original
+  // term. Falls back silently if the historical row isn't in the DB yet.
+  const [fixationStatus, setFixationStatus] = useState<{
+    kind: 'idle' | 'loading' | 'ok' | 'error';
+    message?: string;
+    observationDate?: string;
+  }>({ kind: 'idle' });
+
+  useEffect(() => {
+    if (!fixationDate) return;
+    let cancelled = false;
+    setFixationStatus({ kind: 'loading' });
+    fetch(`/api/swap-rates?date=${fixationDate}`, { cache: 'no-store' })
+      .then(async (res) => {
+        if (!res.ok) {
+          const body = await res.json().catch(() => ({}));
+          throw new Error(body.error || `HTTP ${res.status}`);
+        }
+        return res.json() as Promise<LiveSwapRates>;
+      })
+      .then((data) => {
+        if (cancelled) return;
+        const rate = interpolateSwapRate(data.rates, originalTermMonths(originalTerm));
+        if (rate != null) {
+          setSwapAtFixation(parseFloat(rate.toFixed(2)));
+          setFixationStatus({
+            kind: 'ok',
+            observationDate: typeof data.observationDate === 'string'
+              ? data.observationDate.slice(0, 10)
+              : undefined,
+          });
+        } else {
+          setFixationStatus({ kind: 'error', message: 'No matching curve point' });
+        }
+      })
+      .catch((err) => {
+        if (cancelled) return;
+        setFixationStatus({ kind: 'error', message: err.message });
+      });
+    return () => { cancelled = true; };
+  }, [fixationDate, originalTerm]);
 
   const results = useMemo(() => {
     return BANK_ORDER.map((id) =>
@@ -380,22 +449,23 @@ export default function BreakFeeCalculator() {
                 step={0.05}
                 hint="What they could refix at"
               />
-              <NumberField
-                label="Wholesale rate when client fixed"
-                value={swapAtFixation}
-                onChange={setSwapAtFixation}
-                suffix="%"
-                step={0.05}
-                hint="Swap rate on fixation date"
-              />
-              <NumberField
-                label="Wholesale rate today"
-                value={swapToday}
-                onChange={setSwapToday}
-                suffix="%"
-                step={0.05}
-                hint={live ? 'Auto-filled from RBNZ' : 'For the remaining term'}
-              />
+              <label className="block">
+                <div className="text-xs font-medium text-on-surface-variant mb-1">Original fix term</div>
+                <select
+                  value={originalTerm}
+                  onChange={(e) => setOriginalTerm(e.target.value)}
+                  className="w-full bg-surface-container-highest rounded-lg py-2 px-3 text-sm font-semibold text-on-surface focus:outline-none focus:ring-2 focus:ring-[#228EBF]"
+                >
+                  {ORIGINAL_TERM_OPTIONS.map((o) => (
+                    <option key={o.value} value={o.value}>
+                      {o.label}
+                    </option>
+                  ))}
+                </select>
+                <div className="text-[10px] text-on-surface-variant mt-1">
+                  How long they fixed for
+                </div>
+              </label>
               <label className="block">
                 <div className="text-xs font-medium text-on-surface-variant mb-1">Fix end date</div>
                 <input
@@ -412,6 +482,37 @@ export default function BreakFeeCalculator() {
                       : ' '}
                 </div>
               </label>
+            </div>
+            <div className="mt-3 text-[11px] text-on-surface-variant space-y-0.5">
+              {fixationDate && (
+                <div>
+                  {fixationStatus.kind === 'loading' && (
+                    <>Looking up wholesale rate when client fixed ({fixationDate})…</>
+                  )}
+                  {fixationStatus.kind === 'ok' && (
+                    <>
+                      Wholesale rate when client fixed (~{fixationDate}, {originalTerm}):{' '}
+                      <span className="font-semibold">{swapAtFixation.toFixed(2)}%</span>
+                      {fixationStatus.observationDate && fixationStatus.observationDate !== fixationDate && (
+                        <> · nearest archive row: {fixationStatus.observationDate}</>
+                      )}
+                    </>
+                  )}
+                  {fixationStatus.kind === 'error' && (
+                    <span className="text-amber-700">
+                      Couldn't auto-fill historical rate ({fixationStatus.message}). Using {swapAtFixation.toFixed(2)}%.
+                    </span>
+                  )}
+                </div>
+              )}
+              <div>
+                Wholesale rate today
+                {remainingMonths > 0 ? ` (${remainingMonths} mo curve point)` : ''}:{' '}
+                <span className="font-semibold">{swapToday.toFixed(2)}%</span>
+                {live && (
+                  <> · from RBNZ B2 close {live.observationDate.slice(0, 10)}</>
+                )}
+              </div>
             </div>
             <div className="mt-4 flex flex-wrap gap-2">
               <FilterChip
