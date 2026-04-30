@@ -511,6 +511,7 @@ export default function Dashboard() {
           {[
             { icon: 'compare_arrows', label: 'Bank Comparisons', href: '/lenders' },
             { icon: 'fact_check', label: 'Lender Product Comparisons', href: '/lenders/products' },
+            { icon: 'request_quote', label: 'Break Fee Calculator', href: '/break-fee' },
           ].map(item => (
             <a key={item.label} className="flex items-center gap-3 px-4 py-3 text-[#3f484f] hover:text-[#228EBF] hover:bg-white/40 transition-all duration-200" href={item.href}>
               <span className="material-symbols-outlined">{item.icon}</span>
