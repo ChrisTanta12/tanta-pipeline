@@ -194,6 +194,7 @@ export default function LenderProductsPage() {
           <NavLink icon="account_tree" label="Pipeline" href="/" />
           <NavLink icon="compare_arrows" label="Bank Comparisons" href="/lenders" />
           <NavLink icon="fact_check" label="Lender Product Comparisons" href="/lenders/products" active />
+          <NavLink icon="request_quote" label="Break Fee Calculator" href="/break-fee" />
         </nav>
       </aside>
 
