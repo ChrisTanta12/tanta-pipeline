@@ -47,6 +47,71 @@ export async function upsertCardedData(id: BankId, cardedData: CardedData): Prom
   `;
 }
 
+// ----- Swap rates (wholesale) -------------------------------------------------
+
+export type SwapRateRow = {
+  observationDate: string;            // ISO yyyy-mm-dd
+  rates: Record<string, number>;      // term key -> percent (e.g. "2y": 4.12)
+  source: string;
+  fetchedAt: string;
+};
+
+/** Idempotent: re-running the scraper for the same observation date overwrites. */
+export async function upsertSwapRates(
+  observationDate: string,
+  rates: Record<string, number>,
+  source: string,
+): Promise<void> {
+  // Auto-create on first run so a fresh deploy doesn't 500 before the
+  // migration is applied. Cheap: IF NOT EXISTS short-circuits.
+  await sql`
+    CREATE TABLE IF NOT EXISTS swap_rates (
+      observation_date  DATE PRIMARY KEY,
+      rates             JSONB NOT NULL,
+      source            TEXT NOT NULL,
+      fetched_at        TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )
+  `;
+  await sql`
+    INSERT INTO swap_rates (observation_date, rates, source, fetched_at)
+    VALUES (${observationDate}::date, ${JSON.stringify(rates)}::jsonb, ${source}, NOW())
+    ON CONFLICT (observation_date) DO UPDATE
+      SET rates = EXCLUDED.rates,
+          source = EXCLUDED.source,
+          fetched_at = NOW()
+  `;
+}
+
+export async function getLatestSwapRates(): Promise<SwapRateRow | null> {
+  await sql`
+    CREATE TABLE IF NOT EXISTS swap_rates (
+      observation_date  DATE PRIMARY KEY,
+      rates             JSONB NOT NULL,
+      source            TEXT NOT NULL,
+      fetched_at        TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )
+  `;
+  const { rows } = await sql<{
+    observation_date: string;
+    rates: Record<string, number>;
+    source: string;
+    fetched_at: string;
+  }>`
+    SELECT observation_date, rates, source, fetched_at
+    FROM swap_rates
+    ORDER BY observation_date DESC
+    LIMIT 1
+  `;
+  if (rows.length === 0) return null;
+  const r = rows[0];
+  return {
+    observationDate: r.observation_date,
+    rates: r.rates,
+    source: r.source,
+    fetchedAt: r.fetched_at,
+  };
+}
+
 export async function upsertBank(id: BankId, name: string, data: BankData): Promise<void> {
   await sql`
     INSERT INTO banks (id, name, data, updated_at)

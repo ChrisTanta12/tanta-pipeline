@@ -135,3 +135,17 @@ SET data = data
     'turnaround_seeded', true
   )
 WHERE id = 'anz' AND NOT (data ? 'turnaround_seeded');
+
+-- Wholesale swap rates scraped from interest.co.nz/charts/interest-rates/swap-rates
+-- One row per observation_date. We always read the most recent row, but
+-- keeping history lets us look up the swap rate at the time a client fixed.
+-- Populated by /api/scrape-swap-rates (cron, daily).
+CREATE TABLE IF NOT EXISTS swap_rates (
+  observation_date  DATE PRIMARY KEY,
+  rates             JSONB NOT NULL,        -- { "1y": 4.12, "2y": 4.05, ... }
+  source            TEXT NOT NULL,
+  fetched_at        TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS swap_rates_observation_date_desc ON swap_rates (observation_date DESC);
+

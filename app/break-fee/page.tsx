@@ -1,6 +1,50 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
+
+type LiveSwapRates = {
+  observationDate: string;
+  rates: Record<string, number>;
+  source: string;
+  fetchedAt: string;
+};
+
+const TERM_MONTHS: Array<{ key: string; months: number }> = [
+  { key: '1y', months: 12 },
+  { key: '2y', months: 24 },
+  { key: '3y', months: 36 },
+  { key: '4y', months: 48 },
+  { key: '5y', months: 60 },
+  { key: '7y', months: 84 },
+  { key: '10y', months: 120 },
+];
+
+/**
+ * Linearly interpolate the swap rate for an arbitrary remaining-month value
+ * using the published curve points. Clamps to the endpoints outside [12, 120].
+ */
+function interpolateSwapRate(
+  rates: Record<string, number>,
+  remainingMonths: number,
+): number | null {
+  const points = TERM_MONTHS.map((t) => ({ months: t.months, rate: rates[t.key] }))
+    .filter((p) => typeof p.rate === 'number') as Array<{ months: number; rate: number }>;
+  if (points.length === 0) return null;
+  if (points.length === 1) return points[0].rate;
+  points.sort((a, b) => a.months - b.months);
+
+  if (remainingMonths <= points[0].months) return points[0].rate;
+  if (remainingMonths >= points[points.length - 1].months) return points[points.length - 1].rate;
+  for (let i = 0; i < points.length - 1; i++) {
+    const a = points[i];
+    const b = points[i + 1];
+    if (remainingMonths >= a.months && remainingMonths <= b.months) {
+      const frac = (remainingMonths - a.months) / (b.months - a.months);
+      return a.rate + frac * (b.rate - a.rate);
+    }
+  }
+  return null;
+}
 
 type BankId = 'anz' | 'asb' | 'bnz' | 'westpac' | 'kiwibank';
 
@@ -169,6 +213,39 @@ export default function BreakFeeCalculator() {
   const [remainingMonths, setRemainingMonths] = useState<number>(24);
   const [selectedBank, setSelectedBank] = useState<BankId | 'all'>('all');
 
+  const [live, setLive] = useState<LiveSwapRates | null>(null);
+  const [liveError, setLiveError] = useState<string | null>(null);
+  const [liveLoading, setLiveLoading] = useState<boolean>(false);
+
+  const loadLiveRates = useCallback(async () => {
+    setLiveLoading(true);
+    setLiveError(null);
+    try {
+      const res = await fetch('/api/swap-rates', { cache: 'no-store' });
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        throw new Error(body.error || `HTTP ${res.status}`);
+      }
+      const data: LiveSwapRates = await res.json();
+      setLive(data);
+    } catch (err: any) {
+      setLiveError(err.message || 'Failed to load swap rates');
+    } finally {
+      setLiveLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    loadLiveRates();
+  }, [loadLiveRates]);
+
+  // Re-interpolate "swap today" whenever live rates or remaining months change.
+  useEffect(() => {
+    if (!live) return;
+    const interp = interpolateSwapRate(live.rates, remainingMonths);
+    if (interp != null) setSwapToday(parseFloat(interp.toFixed(2)));
+  }, [live, remainingMonths]);
+
   const results = useMemo(() => {
     return BANK_ORDER.map((id) =>
       calculateBreakFee(BANKS[id], balance, swapAtFixation, swapToday, remainingMonths)
@@ -241,6 +318,65 @@ export default function BreakFeeCalculator() {
         </header>
 
         <div className="px-8 py-6 space-y-6">
+          {/* Live swap rate banner */}
+          <section className="bg-white rounded-2xl shadow-sm p-5">
+            <div className="flex items-center justify-between gap-4 flex-wrap">
+              <div className="flex items-start gap-3">
+                <span className="material-symbols-outlined text-[#228EBF]">trending_up</span>
+                <div>
+                  <div className="text-sm font-bold text-[#0B4E6F]">Live wholesale swap rates</div>
+                  {live && !liveError && (
+                    <div className="text-xs text-on-surface-variant mt-0.5">
+                      As at {new Date(live.observationDate).toLocaleDateString('en-NZ', {
+                        day: 'numeric',
+                        month: 'short',
+                        year: 'numeric',
+                      })}
+                      {' · '}
+                      <a
+                        href={live.source}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-[#228EBF] hover:underline"
+                      >
+                        interest.co.nz
+                      </a>
+                      {' · '}
+                      Auto-fills "swap rate today" using linear interp between curve points
+                    </div>
+                  )}
+                  {liveError && (
+                    <div className="text-xs text-red-700 mt-0.5">
+                      Couldn't load live rates: {liveError}. Enter manually below.
+                    </div>
+                  )}
+                  {!live && !liveError && (
+                    <div className="text-xs text-on-surface-variant mt-0.5">
+                      {liveLoading ? 'Loading…' : 'Not yet loaded.'}
+                    </div>
+                  )}
+                </div>
+              </div>
+              <div className="flex items-center gap-2 flex-wrap">
+                {live && Object.entries(live.rates).map(([k, v]) => (
+                  <span
+                    key={k}
+                    className="px-3 py-1 bg-surface-container-highest rounded-full text-xs font-semibold text-on-surface"
+                  >
+                    {k}: {v.toFixed(2)}%
+                  </span>
+                ))}
+                <button
+                  onClick={loadLiveRates}
+                  disabled={liveLoading}
+                  className="px-3 py-1.5 bg-[#0B4E6F] hover:bg-[#228EBF] text-white text-xs font-semibold rounded-full transition-colors disabled:opacity-50"
+                >
+                  {liveLoading ? 'Refreshing…' : 'Refresh'}
+                </button>
+              </div>
+            </div>
+          </section>
+
           {/* Inputs */}
           <section className="bg-white rounded-2xl shadow-sm p-6">
             <h3 className="text-sm font-bold text-[#0B4E6F] uppercase tracking-wider mb-4">
@@ -268,7 +404,7 @@ export default function BreakFeeCalculator() {
                 onChange={setSwapAtFixation}
                 suffix="%"
                 step={0.05}
-                hint="For original term"
+                hint="Manual — original term"
               />
               <NumberField
                 label="Swap rate today"
@@ -276,7 +412,7 @@ export default function BreakFeeCalculator() {
                 onChange={setSwapToday}
                 suffix="%"
                 step={0.05}
-                hint="For remaining term"
+                hint={live ? 'Auto from live curve' : 'Manual — remaining term'}
               />
               <NumberField
                 label="Months remaining"
