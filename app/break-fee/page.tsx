@@ -403,35 +403,36 @@ export default function BreakFeeCalculator() {
             </h3>
             <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4">
               <NumberField
-                label="Remaining balance"
+                label="Loan balance"
                 value={balance}
                 onChange={setBalance}
                 prefix="$"
                 step={1000}
+                hint="Outstanding amount on the fix"
               />
               <NumberField
-                label="Fixed rate (client)"
+                label="Client's fixed rate"
                 value={fixedRate}
                 onChange={setFixedRate}
                 suffix="%"
                 step={0.05}
-                hint="Reference only"
+                hint="What they're paying now"
               />
               <NumberField
-                label="Swap rate at fixation"
+                label="Wholesale rate when client fixed"
                 value={swapAtFixation}
                 onChange={setSwapAtFixation}
                 suffix="%"
                 step={0.05}
-                hint="Manual — original term"
+                hint="Swap rate on fixation date"
               />
               <NumberField
-                label="Swap rate today"
+                label="Wholesale rate today"
                 value={swapToday}
                 onChange={setSwapToday}
                 suffix="%"
                 step={0.05}
-                hint={live ? 'Auto from live curve' : 'Manual — remaining term'}
+                hint={live ? 'Auto-filled from RBNZ' : 'For the remaining term'}
               />
               <label className="block">
                 <div className="text-xs font-medium text-on-surface-variant mb-1">Fix end date</div>
@@ -620,38 +621,61 @@ function SummaryCard({
 }
 
 function BankResultCard({ result }: { result: CalcResult }) {
+  const [open, setOpen] = useState(false);
   return (
     <div
-      className="bg-white rounded-2xl shadow-sm p-5 border-t-4"
+      className="bg-white rounded-2xl shadow-sm border-t-4 overflow-hidden"
       style={{ borderColor: result.accent }}
     >
-      <div className="flex items-baseline justify-between">
-        <h4 className="text-lg font-bold text-[#0B4E6F]">{result.bankName}</h4>
-        <span className="text-2xl font-bold" style={{ color: result.accent }}>
-          {fmtNZD(result.total)}
-        </span>
-      </div>
-      <div className="mt-4 space-y-1.5 text-sm">
-        <Row label="Bank rate at fixation" value={`${result.rateAtFixation.toFixed(2)}%`} />
-        <Row label="Bank rate today" value={`${result.rateToday.toFixed(2)}%`} />
-        <Row
-          label="Rate differential"
-          value={`${result.rateDifferential.toFixed(2)} pp`}
-          emphasis
-        />
-        <Row label="Economic loss" value={fmtNZD(result.economicLoss)} />
-        {result.adminFee > 0 && (
-          <Row label="Admin fee" value={fmtNZD(result.adminFee)} />
-        )}
-      </div>
-      <details className="mt-4">
-        <summary className="text-xs font-semibold text-[#228EBF] cursor-pointer">
-          How {result.bankName} calculates it
-        </summary>
-        <p className="text-xs text-on-surface-variant mt-2 leading-relaxed">
-          {result.methodology}
-        </p>
-      </details>
+      <button
+        type="button"
+        onClick={() => setOpen((o) => !o)}
+        aria-expanded={open}
+        className="w-full flex items-center justify-between gap-3 p-5 text-left hover:bg-black/[0.02] transition-colors"
+      >
+        <div className="flex items-baseline gap-3">
+          <h4 className="text-lg font-bold text-[#0B4E6F]">{result.bankName}</h4>
+          <span className="text-[10px] uppercase tracking-wider text-on-surface-variant">
+            {open ? 'Hide details' : 'Show details'}
+          </span>
+        </div>
+        <div className="flex items-center gap-2">
+          <span className="text-2xl font-bold" style={{ color: result.accent }}>
+            {fmtNZD(result.total)}
+          </span>
+          <span
+            className="material-symbols-outlined text-on-surface-variant transition-transform"
+            style={{ transform: open ? 'rotate(180deg)' : 'rotate(0deg)' }}
+          >
+            expand_more
+          </span>
+        </div>
+      </button>
+      {open && (
+        <div className="px-5 pb-5 -mt-1">
+          <div className="space-y-1.5 text-sm">
+            <Row label="Wholesale rate when client fixed" value={`${result.rateAtFixation.toFixed(2)}%`} />
+            <Row label="Wholesale rate today" value={`${result.rateToday.toFixed(2)}%`} />
+            <Row
+              label="Difference"
+              value={`${result.rateDifferential.toFixed(2)} pp`}
+              emphasis
+            />
+            <Row label="Economic loss to bank" value={fmtNZD(result.economicLoss)} />
+            {result.adminFee > 0 && (
+              <Row label="Bank admin fee" value={fmtNZD(result.adminFee)} />
+            )}
+          </div>
+          <details className="mt-4">
+            <summary className="text-xs font-semibold text-[#228EBF] cursor-pointer">
+              How {result.bankName} calculates it
+            </summary>
+            <p className="text-xs text-on-surface-variant mt-2 leading-relaxed">
+              {result.methodology}
+            </p>
+          </details>
+        </div>
+      )}
     </div>
   );
 }
