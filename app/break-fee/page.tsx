@@ -208,6 +208,7 @@ function calculateBreakFee(
 export default function BreakFeeCalculator() {
   const [balance, setBalance] = useState<number>(500000);
   const [fixedRate, setFixedRate] = useState<number>(6.5);
+  const [newRate, setNewRate] = useState<number>(5.0);
   const [swapAtFixation, setSwapAtFixation] = useState<number>(5.0);
   const [swapToday, setSwapToday] = useState<number>(4.0);
   const [fixEndDate, setFixEndDate] = useState<string>('');
@@ -271,22 +272,33 @@ export default function BreakFeeCalculator() {
     );
   }, [balance, swapAtFixation, swapToday, remainingMonths]);
 
-  const filteredResults = useMemo(() => {
-    if (selectedBank === 'all') return results;
-    return results.filter((r) => r.bankId === selectedBank);
-  }, [results, selectedBank]);
+  // Refixing economics: how much the client saves over the remaining term
+  // by paying the break fee now and locking in `newRate` instead of staying
+  // on `fixedRate` until the natural end of the fix.
+  const savings = useMemo(() => {
+    const annualSaving = balance * Math.max(0, fixedRate - newRate) / 100;
+    const monthlySaving = annualSaving / 12;
+    const totalSaving = monthlySaving * remainingMonths;
+    return { monthlySaving, totalSaving, annualSaving };
+  }, [balance, fixedRate, newRate, remainingMonths]);
 
-  const cheapest = useMemo(() => {
-    const nonZero = results.filter((r) => r.total > 0);
-    if (nonZero.length === 0) return null;
-    return nonZero.reduce((a, b) => (a.total < b.total ? a : b));
-  }, [results]);
+  type Verdict = CalcResult & {
+    netBenefit: number;        // totalSaving − break fee. >0 = breaking pays off
+    breakevenMonths: number | null; // null if monthlySaving = 0
+  };
 
-  const dearest = useMemo(() => {
-    const nonZero = results.filter((r) => r.total > 0);
-    if (nonZero.length === 0) return null;
-    return nonZero.reduce((a, b) => (a.total > b.total ? a : b));
-  }, [results]);
+  const verdicts: Verdict[] = useMemo(() => {
+    return results.map((r) => {
+      const netBenefit = savings.totalSaving - r.total;
+      const breakevenMonths = savings.monthlySaving > 0 ? r.total / savings.monthlySaving : null;
+      return { ...r, netBenefit, breakevenMonths };
+    });
+  }, [results, savings]);
+
+  const filteredVerdicts = useMemo(() => {
+    if (selectedBank === 'all') return verdicts;
+    return verdicts.filter((r) => r.bankId === selectedBank);
+  }, [verdicts, selectedBank]);
 
   return (
     <div className="min-h-screen bg-surface-container-low">
@@ -338,70 +350,12 @@ export default function BreakFeeCalculator() {
 
         <div className="px-8 py-6 space-y-6">
           {/* Live swap rate banner */}
-          <section className="bg-white rounded-2xl shadow-sm p-5">
-            <div className="flex items-center justify-between gap-4 flex-wrap">
-              <div className="flex items-start gap-3">
-                <span className="material-symbols-outlined text-[#228EBF]">trending_up</span>
-                <div>
-                  <div className="text-sm font-bold text-[#0B4E6F]">Live wholesale swap rates</div>
-                  {live && !liveError && (
-                    <div className="text-xs text-on-surface-variant mt-0.5">
-                      As at {new Date(live.observationDate).toLocaleDateString('en-NZ', {
-                        day: 'numeric',
-                        month: 'short',
-                        year: 'numeric',
-                      })}
-                      {' · '}
-                      <a
-                        href={live.source}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="text-[#228EBF] hover:underline"
-                      >
-                        RBNZ B2 (daily close)
-                      </a>
-                      {' · '}
-                      Auto-fills "swap rate today" using linear interp between curve points
-                    </div>
-                  )}
-                  {liveError && (
-                    <div className="text-xs text-red-700 mt-0.5">
-                      Couldn't load live rates: {liveError}. Enter manually below.
-                    </div>
-                  )}
-                  {!live && !liveError && (
-                    <div className="text-xs text-on-surface-variant mt-0.5">
-                      {liveLoading ? 'Loading…' : 'Not yet loaded.'}
-                    </div>
-                  )}
-                </div>
-              </div>
-              <div className="flex items-center gap-2 flex-wrap">
-                {live && Object.entries(live.rates).map(([k, v]) => (
-                  <span
-                    key={k}
-                    className="px-3 py-1 bg-surface-container-highest rounded-full text-xs font-semibold text-on-surface"
-                  >
-                    {k}: {v.toFixed(2)}%
-                  </span>
-                ))}
-                <button
-                  onClick={loadLiveRates}
-                  disabled={liveLoading}
-                  className="px-3 py-1.5 bg-[#0B4E6F] hover:bg-[#228EBF] text-white text-xs font-semibold rounded-full transition-colors disabled:opacity-50"
-                >
-                  {liveLoading ? 'Refreshing…' : 'Refresh'}
-                </button>
-              </div>
-            </div>
-          </section>
-
           {/* Inputs */}
           <section className="bg-white rounded-2xl shadow-sm p-6">
             <h3 className="text-sm font-bold text-[#0B4E6F] uppercase tracking-wider mb-4">
               Loan details
             </h3>
-            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4">
+            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
               <NumberField
                 label="Loan balance"
                 value={balance}
@@ -417,6 +371,14 @@ export default function BreakFeeCalculator() {
                 suffix="%"
                 step={0.05}
                 hint="What they're paying now"
+              />
+              <NumberField
+                label="New rate available"
+                value={newRate}
+                onChange={setNewRate}
+                suffix="%"
+                step={0.05}
+                hint="What they could refix at"
               />
               <NumberField
                 label="Wholesale rate when client fixed"
@@ -469,35 +431,156 @@ export default function BreakFeeCalculator() {
             </div>
           </section>
 
-          {/* Summary */}
-          {cheapest && dearest && cheapest.bankId !== dearest.bankId && (
-            <section className="grid grid-cols-1 md:grid-cols-3 gap-4">
-              <SummaryCard
-                label="Lowest estimate"
-                bank={cheapest.bankName}
-                value={cheapest.total}
-                accent={cheapest.accent}
-              />
-              <SummaryCard
-                label="Highest estimate"
-                bank={dearest.bankName}
-                value={dearest.total}
-                accent={dearest.accent}
-              />
-              <SummaryCard
-                label="Spread"
-                bank={`${dearest.bankName} − ${cheapest.bankName}`}
-                value={dearest.total - cheapest.total}
-                accent="#0B4E6F"
-              />
-            </section>
-          )}
+          {/* Refixing scenario summary */}
+          <section className="bg-gradient-to-br from-[#0B4E6F] to-[#228EBF] rounded-2xl shadow-sm p-6 text-white">
+            <h3 className="text-sm font-bold uppercase tracking-wider opacity-80 mb-3">
+              If they refix at {newRate.toFixed(2)}%
+            </h3>
+            <div className="grid grid-cols-2 md:grid-cols-3 gap-6">
+              <div>
+                <div className="text-[11px] opacity-70 uppercase tracking-wider">Monthly saving</div>
+                <div className="text-3xl font-bold mt-1">{fmtNZD(savings.monthlySaving)}</div>
+                <div className="text-xs opacity-70 mt-1">
+                  on $<span className="font-semibold">{balance.toLocaleString('en-NZ')}</span>
+                  {' '}× {(fixedRate - newRate).toFixed(2)} pp
+                </div>
+              </div>
+              <div>
+                <div className="text-[11px] opacity-70 uppercase tracking-wider">Total saving over remaining term</div>
+                <div className="text-3xl font-bold mt-1">{fmtNZD(savings.totalSaving)}</div>
+                <div className="text-xs opacity-70 mt-1">
+                  {remainingMonths > 0 ? `${remainingMonths} months × ${fmtNZD(savings.monthlySaving)}` : 'no months remaining'}
+                </div>
+              </div>
+              <div>
+                <div className="text-[11px] opacity-70 uppercase tracking-wider">Annual saving</div>
+                <div className="text-3xl font-bold mt-1">{fmtNZD(savings.annualSaving)}</div>
+                <div className="text-xs opacity-70 mt-1">if rates held for a full year</div>
+              </div>
+            </div>
+          </section>
 
-          {/* Results */}
-          <section className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
-            {filteredResults.map((r) => (
-              <BankResultCard key={r.bankId} result={r} />
-            ))}
+          {/* Big results table — break fee vs savings vs net per bank */}
+          <section className="bg-white rounded-2xl shadow-sm overflow-hidden">
+            <div className="px-6 py-4 border-b border-black/5">
+              <h3 className="text-sm font-bold text-[#0B4E6F] uppercase tracking-wider">
+                Break fee vs. savings — by bank
+              </h3>
+              <p className="text-xs text-on-surface-variant mt-1">
+                Net benefit = total savings over remaining term − break fee. Positive (green) means breaking pays off.
+              </p>
+            </div>
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead className="bg-surface-container-highest">
+                  <tr className="text-[11px] uppercase tracking-wider text-on-surface-variant">
+                    <th className="text-left px-6 py-3 font-semibold">Bank</th>
+                    <th className="text-right px-6 py-3 font-semibold">Break fee</th>
+                    <th className="text-right px-6 py-3 font-semibold">Total savings</th>
+                    <th className="text-right px-6 py-3 font-semibold">Net benefit</th>
+                    <th className="text-right px-6 py-3 font-semibold">Breakeven</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {filteredVerdicts.map((v) => {
+                    const isWin = v.netBenefit > 0;
+                    return (
+                      <tr key={v.bankId} className="border-t border-black/5">
+                        <td className="px-6 py-4">
+                          <div className="flex items-center gap-3">
+                            <span className="w-2 h-8 rounded" style={{ backgroundColor: v.accent }} />
+                            <span className="font-bold text-[#0B4E6F] text-base">{v.bankName}</span>
+                          </div>
+                        </td>
+                        <td className="px-6 py-4 text-right font-semibold text-on-surface">{fmtNZD(v.total)}</td>
+                        <td className="px-6 py-4 text-right font-semibold text-on-surface">{fmtNZD(savings.totalSaving)}</td>
+                        <td className={`px-6 py-4 text-right text-lg font-bold ${isWin ? 'text-emerald-700' : 'text-red-700'}`}>
+                          {isWin ? '+' : ''}{fmtNZD(v.netBenefit)}
+                        </td>
+                        <td className="px-6 py-4 text-right text-on-surface-variant">
+                          {v.breakevenMonths === null
+                            ? '—'
+                            : v.breakevenMonths > remainingMonths
+                              ? `${Math.round(v.breakevenMonths)} mo (past fix end)`
+                              : `${Math.round(v.breakevenMonths)} mo`}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          </section>
+
+          {/* Detail bank cards (collapsible) */}
+          <section>
+            <h3 className="text-sm font-bold text-[#0B4E6F] uppercase tracking-wider mb-3">
+              Per-bank detail
+            </h3>
+            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+              {filteredVerdicts.map((r) => (
+                <BankResultCard key={r.bankId} result={r} />
+              ))}
+            </div>
+          </section>
+
+          {/* Live swap rate banner — moved here so it's reference info, not the headline */}
+          <section className="bg-white rounded-2xl shadow-sm p-5">
+            <div className="flex items-center justify-between gap-4 flex-wrap">
+              <div className="flex items-start gap-3">
+                <span className="material-symbols-outlined text-[#228EBF]">trending_up</span>
+                <div>
+                  <div className="text-sm font-bold text-[#0B4E6F]">Live wholesale swap rates</div>
+                  {live && !liveError && (
+                    <div className="text-xs text-on-surface-variant mt-0.5">
+                      As at {new Date(live.observationDate).toLocaleDateString('en-NZ', {
+                        day: 'numeric',
+                        month: 'short',
+                        year: 'numeric',
+                      })}
+                      {' · '}
+                      <a
+                        href={live.source}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-[#228EBF] hover:underline"
+                      >
+                        RBNZ B2 (daily close)
+                      </a>
+                      {' · '}
+                      Auto-fills "wholesale rate today" using linear interp between curve points
+                    </div>
+                  )}
+                  {liveError && (
+                    <div className="text-xs text-red-700 mt-0.5">
+                      Couldn't load live rates: {liveError}. Enter manually above.
+                    </div>
+                  )}
+                  {!live && !liveError && (
+                    <div className="text-xs text-on-surface-variant mt-0.5">
+                      {liveLoading ? 'Loading…' : 'Not yet loaded.'}
+                    </div>
+                  )}
+                </div>
+              </div>
+              <div className="flex items-center gap-2 flex-wrap">
+                {live && Object.entries(live.rates).map(([k, v]) => (
+                  <span
+                    key={k}
+                    className="px-3 py-1 bg-surface-container-highest rounded-full text-xs font-semibold text-on-surface"
+                  >
+                    {k}: {v.toFixed(2)}%
+                  </span>
+                ))}
+                <button
+                  onClick={loadLiveRates}
+                  disabled={liveLoading}
+                  className="px-3 py-1.5 bg-[#0B4E6F] hover:bg-[#228EBF] text-white text-xs font-semibold rounded-full transition-colors disabled:opacity-50"
+                >
+                  {liveLoading ? 'Refreshing…' : 'Refresh'}
+                </button>
+              </div>
+            </div>
           </section>
 
           {/* Disclaimer */}
@@ -595,28 +678,6 @@ function FilterChip({
     >
       {label}
     </button>
-  );
-}
-
-function SummaryCard({
-  label,
-  bank,
-  value,
-  accent,
-}: {
-  label: string;
-  bank: string;
-  value: number;
-  accent: string;
-}) {
-  return (
-    <div className="bg-white rounded-2xl shadow-sm p-5 border-l-4" style={{ borderColor: accent }}>
-      <div className="text-xs font-medium text-on-surface-variant uppercase tracking-wider">
-        {label}
-      </div>
-      <div className="text-2xl font-bold text-[#0B4E6F] mt-1">{fmtNZD(value)}</div>
-      <div className="text-sm text-on-surface-variant mt-1">{bank}</div>
-    </div>
   );
 }
 
