@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 type LiveSwapRates = {
   observationDate: string;
@@ -444,6 +444,7 @@ export default function BreakFeeCalculator() {
                 onChange={setBalance}
                 prefix="$"
                 step={1000}
+                format="currency"
                 hint="Outstanding amount on the fix"
               />
               <NumberField
@@ -723,6 +724,24 @@ export default function BreakFeeCalculator() {
   );
 }
 
+type NumberFieldFormat = 'number' | 'currency';
+
+function formatFieldValue(value: number, format: NumberFieldFormat): string {
+  if (!Number.isFinite(value)) return '';
+  if (format === 'currency') {
+    return value.toLocaleString('en-NZ', { maximumFractionDigits: 0 });
+  }
+  // 'number' — preserve user-entered decimals without forcing trailing zeros.
+  return String(value);
+}
+
+function parseFieldValue(text: string): number | null {
+  const cleaned = text.replace(/[, ]/g, '').trim();
+  if (cleaned === '' || cleaned === '-' || cleaned === '.') return null;
+  const n = parseFloat(cleaned);
+  return Number.isFinite(n) ? n : null;
+}
+
 function NumberField({
   label,
   value,
@@ -731,6 +750,7 @@ function NumberField({
   suffix,
   step = 1,
   hint,
+  format = 'number',
 }: {
   label: string;
   value: number;
@@ -739,7 +759,24 @@ function NumberField({
   suffix?: string;
   step?: number;
   hint?: string;
+  format?: NumberFieldFormat;
 }) {
+  // Local string state so the input can be empty / mid-edit without snapping
+  // back to "0" or reformatting under the cursor while the user types. We
+  // sync from the parent's `value` only when the field doesn't have focus —
+  // that handles auto-fills (e.g., live swap rate) without disrupting typing.
+  const [text, setText] = useState<string>(() => formatFieldValue(value, format));
+  const focusedRef = useRef(false);
+
+  useEffect(() => {
+    if (!focusedRef.current) setText(formatFieldValue(value, format));
+  }, [value, format]);
+
+  // Currency uses text input so we can render thousand-separators; number
+  // uses native number input so the step arrows still work.
+  const inputType = format === 'currency' ? 'text' : 'number';
+  const inputMode = format === 'currency' ? 'numeric' : undefined;
+
   return (
     <label className="block">
       <div className="text-xs font-medium text-on-surface-variant mb-1">{label}</div>
@@ -750,10 +787,27 @@ function NumberField({
           </span>
         )}
         <input
-          type="number"
-          value={value}
-          step={step}
-          onChange={(e) => onChange(parseFloat(e.target.value) || 0)}
+          type={inputType}
+          inputMode={inputMode}
+          value={text}
+          step={format === 'number' ? step : undefined}
+          onFocus={() => {
+            focusedRef.current = true;
+          }}
+          onBlur={() => {
+            focusedRef.current = false;
+            // On blur, reformat to canonical display. If the field is empty
+            // we leave the parent value as-is and refill from it.
+            setText(formatFieldValue(value, format));
+          }}
+          onChange={(e) => {
+            const raw = e.target.value;
+            setText(raw);
+            const parsed = parseFieldValue(raw);
+            if (parsed !== null) onChange(parsed);
+            // If parsed is null (empty / partial like "5."), don't push to
+            // the parent — keeps the calc from briefly using 0.
+          }}
           className={`w-full bg-surface-container-highest rounded-lg py-2 ${
             prefix ? 'pl-7' : 'pl-3'
           } ${suffix ? 'pr-7' : 'pr-3'} text-sm font-semibold text-on-surface focus:outline-none focus:ring-2 focus:ring-[#228EBF]`}
