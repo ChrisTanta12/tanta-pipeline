@@ -210,8 +210,27 @@ export default function BreakFeeCalculator() {
   const [fixedRate, setFixedRate] = useState<number>(6.5);
   const [swapAtFixation, setSwapAtFixation] = useState<number>(5.0);
   const [swapToday, setSwapToday] = useState<number>(4.0);
-  const [remainingMonths, setRemainingMonths] = useState<number>(24);
+  const [fixEndDate, setFixEndDate] = useState<string>('');
   const [selectedBank, setSelectedBank] = useState<BankId | 'all'>('all');
+
+  // Default the end date client-side to avoid SSR/CSR hydration drift.
+  useEffect(() => {
+    if (fixEndDate) return;
+    const d = new Date();
+    d.setMonth(d.getMonth() + 24);
+    setFixEndDate(d.toISOString().slice(0, 10));
+  }, [fixEndDate]);
+
+  const remainingMonths = useMemo(() => {
+    if (!fixEndDate) return 0;
+    const end = new Date(fixEndDate + 'T00:00:00');
+    if (isNaN(end.getTime())) return 0;
+    const now = new Date();
+    const yearDiff = end.getFullYear() - now.getFullYear();
+    const monthDiff = end.getMonth() - now.getMonth();
+    const dayFraction = (end.getDate() - now.getDate()) / 30;
+    return Math.max(0, Math.round(yearDiff * 12 + monthDiff + dayFraction));
+  }, [fixEndDate]);
 
   const [live, setLive] = useState<LiveSwapRates | null>(null);
   const [liveError, setLiveError] = useState<string | null>(null);
@@ -414,12 +433,22 @@ export default function BreakFeeCalculator() {
                 step={0.05}
                 hint={live ? 'Auto from live curve' : 'Manual — remaining term'}
               />
-              <NumberField
-                label="Months remaining"
-                value={remainingMonths}
-                onChange={setRemainingMonths}
-                step={1}
-              />
+              <label className="block">
+                <div className="text-xs font-medium text-on-surface-variant mb-1">Fix end date</div>
+                <input
+                  type="date"
+                  value={fixEndDate}
+                  onChange={(e) => setFixEndDate(e.target.value)}
+                  className="w-full bg-surface-container-highest rounded-lg py-2 px-3 text-sm font-semibold text-on-surface focus:outline-none focus:ring-2 focus:ring-[#228EBF]"
+                />
+                <div className="text-[10px] text-on-surface-variant mt-1">
+                  {remainingMonths > 0
+                    ? `${remainingMonths} month${remainingMonths === 1 ? '' : 's'} remaining`
+                    : fixEndDate
+                      ? 'Fix already over — no break fee'
+                      : ' '}
+                </div>
+              </label>
             </div>
             <div className="mt-4 flex flex-wrap gap-2">
               <FilterChip
