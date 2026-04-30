@@ -58,11 +58,24 @@ type BankConfig = {
   fundingSpreadBps: number;
   // whether the bank present-values future cashflows back to today
   presentValue: boolean;
-  // flat admin fee added to the calculated economic loss
-  adminFee: number;
+  // Flat admin fee added to the calculated economic loss. `null` means the
+  // bank does not publish a figure — the UI shows "?" with a "must enquire"
+  // hint, and the calc treats it as 0 (we don't pretend we know the answer).
+  adminFee: number | null;
   methodology: string;
 };
 
+// Admin fees verified against each bank's published fee schedule (May 2026):
+//   ANZ      $300  Early repayment administration fee (anz.co.nz/rates-fees-agreements/home-loans)
+//   ASB       $10  Early repayment adjustment administration fee
+//   BNZ        $0  No separate administration fee published; the early repayment
+//                  charge itself is the only line.
+//   Westpac    $0  Westpac removed its early-repayment admin fees in 2024-25;
+//                  prepayment cost (the break itself) still applies.
+//   Kiwibank  $40  Administration fee per excess repayment on the fixed component.
+//
+// These numbers stack on top of the calculated economic loss. The funding
+// spread / PV-discount treatments are unchanged from before.
 const BANKS: Record<BankId, BankConfig> = {
   anz: {
     id: 'anz',
@@ -70,9 +83,9 @@ const BANKS: Record<BankId, BankConfig> = {
     accent: '#2b6485',
     fundingSpreadBps: 0,
     presentValue: true,
-    adminFee: 0,
+    adminFee: 300,
     methodology:
-      'Compares ANZ wholesale swap rate at fixation vs. today\'s swap rate for the remaining term. Each scheduled payment of the rate differential is present-valued back to today.',
+      'Compares ANZ wholesale swap rate at fixation vs. today\'s swap rate for the remaining term. Each scheduled payment of the rate differential is present-valued back to today. Adds ANZ\'s $300 early repayment administration fee.',
   },
   asb: {
     id: 'asb',
@@ -80,9 +93,9 @@ const BANKS: Record<BankId, BankConfig> = {
     accent: '#eab308',
     fundingSpreadBps: 25,
     presentValue: true,
-    adminFee: 50,
+    adminFee: 10,
     methodology:
-      'Uses ASB\'s wholesale rate (swap + ASB funding margin) at fixation vs. today. Present-values future cashflows. Adds a $50 break administration fee.',
+      'Uses ASB\'s wholesale rate (swap + ASB funding margin) at fixation vs. today. Present-values future cashflows. Adds ASB\'s $10 early repayment adjustment administration fee.',
   },
   bnz: {
     id: 'bnz',
@@ -90,9 +103,9 @@ const BANKS: Record<BankId, BankConfig> = {
     accent: '#031f41',
     fundingSpreadBps: 0,
     presentValue: false,
-    adminFee: 0,
+    adminFee: null,
     methodology:
-      'Simple interest differential — wholesale swap rate at fixation vs. today, multiplied by remaining balance and remaining term. No PV discount applied.',
+      'Simple interest differential — wholesale swap rate at fixation vs. today, multiplied by remaining balance and remaining term. No PV discount applied. BNZ does not publish a fixed administration fee — must enquire with the bank for the actual figure on a per-loan basis.',
   },
   westpac: {
     id: 'westpac',
@@ -102,7 +115,7 @@ const BANKS: Record<BankId, BankConfig> = {
     presentValue: true,
     adminFee: 0,
     methodology:
-      'Westpac wholesale rate (swap + Westpac wholesale margin) at fixation vs. today. Present-values the differential over the remaining term.',
+      'Westpac wholesale rate (swap + Westpac wholesale margin) at fixation vs. today. Present-values the differential over the remaining term. Westpac removed its early-repayment admin fees in 2024-25 — only the prepayment cost itself applies.',
   },
   kiwibank: {
     id: 'kiwibank',
@@ -110,9 +123,9 @@ const BANKS: Record<BankId, BankConfig> = {
     accent: '#22c55e',
     fundingSpreadBps: 25,
     presentValue: true,
-    adminFee: 75,
+    adminFee: 40,
     methodology:
-      'Kiwibank cost-of-funds rate (swap + Kiwibank funding spread) at fixation vs. today. Present-values cashflows. Adds an early repayment admin fee (~$75, varies by product).',
+      'Kiwibank cost-of-funds rate (swap + Kiwibank funding spread) at fixation vs. today. Present-values cashflows. Adds Kiwibank\'s $40 administration fee per excess repayment on the fixed component.',
   },
 };
 
@@ -135,7 +148,7 @@ type CalcResult = {
   rateToday: number; // effective bank funding rate today
   rateDifferential: number; // % (e.g. 0.02 for 2%)
   economicLoss: number; // before admin fee
-  adminFee: number;
+  adminFee: number | null; // null = bank doesn't publish; treat as 0 in totals
   total: number;
   methodology: string;
 };
@@ -163,7 +176,7 @@ function calculateBreakFee(
       rateToday,
       rateDifferential: rateDiffPct,
       economicLoss: 0,
-      adminFee: 0,
+      adminFee: bank.adminFee,
       total: 0,
       methodology: bank.methodology,
     };
@@ -200,7 +213,7 @@ function calculateBreakFee(
     rateDifferential: rateDiffPct,
     economicLoss,
     adminFee: bank.adminFee,
-    total: economicLoss + bank.adminFee,
+    total: economicLoss + (bank.adminFee ?? 0),
     methodology: bank.methodology,
   };
 }
@@ -824,9 +837,11 @@ function BankResultCard({ result }: { result: CalcResult }) {
               emphasis
             />
             <Row label="Economic loss to bank" value={fmtNZD(result.economicLoss)} />
-            {result.adminFee > 0 && (
+            {result.adminFee === null ? (
+              <Row label="Bank admin fee" value="? — must enquire" />
+            ) : result.adminFee > 0 ? (
               <Row label="Bank admin fee" value={fmtNZD(result.adminFee)} />
-            )}
+            ) : null}
           </div>
           <details className="mt-4">
             <summary className="text-xs font-semibold text-[#228EBF] cursor-pointer">
