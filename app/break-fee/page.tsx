@@ -58,8 +58,10 @@ type BankConfig = {
   fundingSpreadBps: number;
   // whether the bank present-values future cashflows back to today
   presentValue: boolean;
-  // flat admin fee added to the calculated economic loss
-  adminFee: number;
+  // Flat admin fee added to the calculated economic loss. `null` means the
+  // bank does not publish a figure — the UI shows "?" with a "must enquire"
+  // hint, and the calc treats it as 0 (we don't pretend we know the answer).
+  adminFee: number | null;
   methodology: string;
 };
 
@@ -101,9 +103,9 @@ const BANKS: Record<BankId, BankConfig> = {
     accent: '#031f41',
     fundingSpreadBps: 0,
     presentValue: false,
-    adminFee: 0,
+    adminFee: null,
     methodology:
-      'Simple interest differential — wholesale swap rate at fixation vs. today, multiplied by remaining balance and remaining term. No PV discount applied. BNZ does not publish a separate administration fee on top.',
+      'Simple interest differential — wholesale swap rate at fixation vs. today, multiplied by remaining balance and remaining term. No PV discount applied. BNZ does not publish a fixed administration fee — must enquire with the bank for the actual figure on a per-loan basis.',
   },
   westpac: {
     id: 'westpac',
@@ -146,7 +148,7 @@ type CalcResult = {
   rateToday: number; // effective bank funding rate today
   rateDifferential: number; // % (e.g. 0.02 for 2%)
   economicLoss: number; // before admin fee
-  adminFee: number;
+  adminFee: number | null; // null = bank doesn't publish; treat as 0 in totals
   total: number;
   methodology: string;
 };
@@ -174,7 +176,7 @@ function calculateBreakFee(
       rateToday,
       rateDifferential: rateDiffPct,
       economicLoss: 0,
-      adminFee: 0,
+      adminFee: bank.adminFee,
       total: 0,
       methodology: bank.methodology,
     };
@@ -211,7 +213,7 @@ function calculateBreakFee(
     rateDifferential: rateDiffPct,
     economicLoss,
     adminFee: bank.adminFee,
-    total: economicLoss + bank.adminFee,
+    total: economicLoss + (bank.adminFee ?? 0),
     methodology: bank.methodology,
   };
 }
@@ -835,9 +837,11 @@ function BankResultCard({ result }: { result: CalcResult }) {
               emphasis
             />
             <Row label="Economic loss to bank" value={fmtNZD(result.economicLoss)} />
-            {result.adminFee > 0 && (
+            {result.adminFee === null ? (
+              <Row label="Bank admin fee" value="? — must enquire" />
+            ) : result.adminFee > 0 ? (
               <Row label="Bank admin fee" value={fmtNZD(result.adminFee)} />
-            )}
+            ) : null}
           </div>
           <details className="mt-4">
             <summary className="text-xs font-semibold text-[#228EBF] cursor-pointer">
