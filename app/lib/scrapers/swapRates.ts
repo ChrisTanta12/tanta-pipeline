@@ -1,174 +1,141 @@
-import * as cheerio from 'cheerio';
+import * as XLSX from 'xlsx';
 
-export const SWAP_RATES_URL = 'https://www.interest.co.nz/charts/interest-rates/swap-rates';
-const USER_AGENT = 'TantaPipelineBot/1.0 (+internal use)';
+/**
+ * RBNZ "B2 — Wholesale interest rates (daily close)" XLSX. The official
+ * source for NZ swap rates. We pull the latest row each day and store it
+ * in the swap_rates table.
+ *
+ * RBNZ updates this file the next business day after market close.
+ */
+export const RBNZ_B2_URL =
+  'https://www.rbnz.govt.nz/-/media/project/sites/rbnz/files/statistics/series/b/b2/hb2-daily-close.xlsx';
+const USER_AGENT = 'Mozilla/5.0 TantaPipelineBot/1.0 (+internal use)';
 
 export type SwapRateTerm = '1y' | '2y' | '3y' | '4y' | '5y' | '7y' | '10y';
 
 export type SwapRateSnapshot = {
-  fetchedAt: string;       // when we scraped
-  source: string;          // URL we scraped from
-  observationDate: string | null; // the "as at" date shown on the page (ISO yyyy-mm-dd if parseable)
+  fetchedAt: string;
+  source: string;
+  observationDate: string | null;   // ISO yyyy-mm-dd
   rates: Record<string, number>;
   warnings: string[];
 };
 
-const TERM_HEADERS: Array<{ regex: RegExp; key: SwapRateTerm }> = [
-  { regex: /^1\s*(yr|year)s?$/i, key: '1y' },
-  { regex: /^2\s*(yr|year)s?$/i, key: '2y' },
-  { regex: /^3\s*(yr|year)s?$/i, key: '3y' },
-  { regex: /^4\s*(yr|year)s?$/i, key: '4y' },
-  { regex: /^5\s*(yr|year)s?$/i, key: '5y' },
-  { regex: /^7\s*(yr|year)s?$/i, key: '7y' },
-  { regex: /^10\s*(yr|year)s?$/i, key: '10y' },
-];
+// Series IDs for swap rates close. Stable across RBNZ revisions.
+const SERIES_TO_TERM: Record<string, SwapRateTerm> = {
+  'INM.DS01.NZZC': '1y',
+  'INM.DS02.NZZC': '2y',
+  'INM.DS03.NZZC': '3y',
+  'INM.DS04.NZZC': '4y',
+  'INM.DS05.NZZC': '5y',
+  'INM.DS07.NZZC': '7y',
+  'INM.DS10.NZZC': '10y',
+};
 
-function headerToTerm(label: string): SwapRateTerm | null {
-  const t = label.replace(/&nbsp;/g, ' ').trim();
-  for (const m of TERM_HEADERS) if (m.regex.test(t)) return m.key;
-  return null;
-}
+const SERIES_ID_ROW = 4;          // 0-indexed row containing "Series Id" header + series codes
+const FIRST_DATA_ROW = 5;         // first row with actual values
 
-function parseRate(raw: string): number | null {
-  const t = raw.replace(/&nbsp;/g, ' ').trim();
-  if (!t || t === '-' || t === '–') return null;
-  const m = t.match(/(-?\d+(?:\.\d+)?)/);
-  if (!m) return null;
-  const n = parseFloat(m[1]);
-  return Number.isFinite(n) ? n : null;
-}
-
-/**
- * Tries to parse "Wednesday, 29 April 2026" / "29 Apr 2026" / "29/04/2026" → ISO date.
- */
-function parseObservationDate(s: string): string | null {
-  const t = s.replace(/&nbsp;/g, ' ').replace(/\s+/g, ' ').trim();
-  // ISO already
-  const iso = t.match(/(\d{4})-(\d{2})-(\d{2})/);
-  if (iso) return `${iso[1]}-${iso[2]}-${iso[3]}`;
-  // dd/mm/yyyy
-  const dmy = t.match(/(\d{1,2})\/(\d{1,2})\/(\d{4})/);
-  if (dmy) {
-    const dd = dmy[1].padStart(2, '0');
-    const mm = dmy[2].padStart(2, '0');
-    return `${dmy[3]}-${mm}-${dd}`;
-  }
-  // dd Month yyyy
-  const months: Record<string, string> = {
-    jan: '01', feb: '02', mar: '03', apr: '04', may: '05', jun: '06',
-    jul: '07', aug: '08', sep: '09', oct: '10', nov: '11', dec: '12',
-  };
-  const dmYY = t.match(/(\d{1,2})\s+([A-Za-z]+)\s+(\d{4})/);
-  if (dmYY) {
-    const dd = dmYY[1].padStart(2, '0');
-    const monKey = dmYY[2].slice(0, 3).toLowerCase();
-    const mm = months[monKey];
-    if (mm) return `${dmYY[3]}-${mm}-${dd}`;
-  }
-  return null;
+function excelSerialToISODate(serial: number): string | null {
+  if (!Number.isFinite(serial)) return null;
+  // Excel serial 25569 = 1970-01-01 (compensates for Lotus's spurious Feb 29 1900).
+  // Exact for dates after 1 March 1900, which covers all RBNZ data (1985+).
+  const ms = Math.round((serial - 25569) * 86400 * 1000);
+  const date = new Date(ms);
+  if (isNaN(date.getTime())) return null;
+  const yyyy = date.getUTCFullYear();
+  const mm = String(date.getUTCMonth() + 1).padStart(2, '0');
+  const dd = String(date.getUTCDate()).padStart(2, '0');
+  return `${yyyy}-${mm}-${dd}`;
 }
 
 /**
- * Scrapes interest.co.nz/charts/interest-rates/swap-rates and returns the
- * most recent observation. The page renders a sortable HTML table whose
- * header row contains "Date", "1yr", "2yrs", etc., and the latest row is
- * either at the top or the bottom depending on sort order — we pick the
- * row whose date parses to the most recent value.
- *
- * One request, no retries — if it fails, the cron runs again tomorrow.
+ * Downloads the RBNZ daily close workbook and extracts the most recent
+ * observation row. One request, no retries.
  */
 export async function scrapeSwapRates(): Promise<SwapRateSnapshot> {
-  const res = await fetch(SWAP_RATES_URL, {
-    headers: { 'User-Agent': USER_AGENT, Accept: 'text/html' },
+  const res = await fetch(RBNZ_B2_URL, {
+    headers: { 'User-Agent': USER_AGENT, Accept: '*/*' },
     cache: 'no-store',
   });
-  if (!res.ok) throw new Error(`interest.co.nz swap-rates returned ${res.status}`);
-  const html = await res.text();
-  return parseSwapRatesHtml(html);
+  if (!res.ok) throw new Error(`RBNZ B2 returned ${res.status}`);
+  const buf = Buffer.from(await res.arrayBuffer());
+  return parseRbnzB2Workbook(buf);
 }
 
-/** Pure parser split out for offline tests. */
-export function parseSwapRatesHtml(html: string): SwapRateSnapshot {
-  const $ = cheerio.load(html);
-  const warnings: string[] = [];
+/** Pure parser split out for offline tests / CLI runs. */
+export function parseRbnzB2Workbook(buf: Buffer): SwapRateSnapshot {
   const fetchedAt = new Date().toISOString();
+  const warnings: string[] = [];
 
-  // Find the first table that has a header row containing "Date" + at least one yr-term column.
-  let chosenTable: any = null;
-  let headerMap: Array<SwapRateTerm | null> = [];
-  let dateColIdx = -1;
-
-  $('table').each((_, tableEl) => {
-    if (chosenTable) return;
-    const $t = $(tableEl);
-    let headerCells = $t.find('thead tr').first().find('th, td').toArray();
-    if (headerCells.length === 0) {
-      headerCells = $t.find('tr').first().find('th, td').toArray();
-    }
-    if (headerCells.length === 0) return;
-    const labels = headerCells.map((c) => $(c).text().trim());
-    const dIdx = labels.findIndex((l) => /^date$/i.test(l));
-    const map: Array<SwapRateTerm | null> = labels.map((l) => headerToTerm(l));
-    const termCount = map.filter((m) => m !== null).length;
-    if (dIdx >= 0 && termCount >= 3) {
-      chosenTable = tableEl;
-      headerMap = map;
-      dateColIdx = dIdx;
-    }
-  });
-
-  if (!chosenTable || dateColIdx < 0) {
-    throw new Error('Could not locate swap rates table on interest.co.nz/charts/interest-rates/swap-rates');
+  const wb = XLSX.read(buf, { type: 'buffer', cellDates: false });
+  const sheetName = wb.SheetNames.find((n) => n.toLowerCase() === 'data') ?? wb.SheetNames[0];
+  if (!sheetName) throw new Error('RBNZ B2 workbook has no sheets');
+  const ws = wb.Sheets[sheetName];
+  const rows = XLSX.utils.sheet_to_json<unknown[]>(ws, { header: 1, raw: true });
+  if (rows.length <= FIRST_DATA_ROW) {
+    throw new Error('RBNZ B2 workbook has no data rows');
   }
 
-  // Collect all data rows with parsed dates, then pick the most recent.
-  type Row = { date: string; rates: Record<string, number> };
-  const rows: Row[] = [];
+  const seriesIdRow = rows[SERIES_ID_ROW];
+  if (!Array.isArray(seriesIdRow) || seriesIdRow.length < 10) {
+    throw new Error('RBNZ B2 series-id header row missing or too short');
+  }
 
-  const collectRow = (cells: any[]): Row | null => {
-    if (cells.length < 2) return null;
-    const dateRaw = $(cells[dateColIdx]).text();
-    const iso = parseObservationDate(dateRaw);
-    if (!iso) return null;
-    const rates: Record<string, number> = {};
-    for (let i = 0; i < cells.length; i++) {
-      const term = headerMap[i];
-      if (!term) continue;
-      const v = parseRate($(cells[i]).text());
-      if (v != null) rates[term] = v;
+  // Build column-index → term map by matching series IDs.
+  const colToTerm: Record<number, SwapRateTerm> = {};
+  for (let i = 0; i < seriesIdRow.length; i++) {
+    const sid = String(seriesIdRow[i] ?? '').trim();
+    if (sid in SERIES_TO_TERM) colToTerm[i] = SERIES_TO_TERM[sid];
+  }
+  const matchedTerms = Object.values(colToTerm);
+  if (matchedTerms.length === 0) {
+    throw new Error('No swap rate series IDs found in RBNZ B2 workbook');
+  }
+  if (matchedTerms.length < Object.keys(SERIES_TO_TERM).length) {
+    const missing = Object.values(SERIES_TO_TERM).filter((t) => !matchedTerms.includes(t));
+    warnings.push(`Missing terms: ${missing.join(', ')}`);
+  }
+
+  // Walk backwards from the end to find the most recent row that has any
+  // non-null swap rate value — RBNZ sometimes pads the bottom with empty
+  // rows on weekends/holidays, and some terms might be null on a given day.
+  let observationDate: string | null = null;
+  const rates: Record<string, number> = {};
+
+  for (let r = rows.length - 1; r >= FIRST_DATA_ROW; r--) {
+    const row = rows[r];
+    if (!Array.isArray(row) || row.length === 0) continue;
+    const dateCell = row[0];
+    if (typeof dateCell !== 'number') continue;
+    const iso = excelSerialToISODate(dateCell);
+    if (!iso) continue;
+
+    let anyRate = false;
+    const rowRates: Record<string, number> = {};
+    for (const colIdxStr of Object.keys(colToTerm)) {
+      const colIdx = Number(colIdxStr);
+      const v = row[colIdx];
+      if (typeof v === 'number' && Number.isFinite(v)) {
+        rowRates[colToTerm[colIdx]] = v;
+        anyRate = true;
+      }
     }
-    if (Object.keys(rates).length === 0) return null;
-    return { date: iso, rates };
-  };
-
-  $(chosenTable).find('tbody tr').each((_: number, tr: any) => {
-    const cells = $(tr).find('td, th').toArray();
-    const row = collectRow(cells);
-    if (row) rows.push(row);
-  });
-
-  if (rows.length === 0) {
-    // Tables sometimes lack a tbody wrapper — retry with all rows minus header.
-    const allTrs = $(chosenTable).find('tr').toArray();
-    for (let i = 1; i < allTrs.length; i++) {
-      const cells = $(allTrs[i]).find('td, th').toArray();
-      const row = collectRow(cells);
-      if (row) rows.push(row);
+    if (anyRate) {
+      observationDate = iso;
+      Object.assign(rates, rowRates);
+      break;
     }
   }
 
-  if (rows.length === 0) {
-    throw new Error('Swap rates table found but no parseable rows');
+  if (!observationDate) {
+    throw new Error('No row with swap rate values found in RBNZ B2 workbook');
   }
-
-  rows.sort((a, b) => (a.date < b.date ? 1 : -1));
-  const latest = rows[0];
 
   return {
     fetchedAt,
-    source: SWAP_RATES_URL,
-    observationDate: latest.date,
-    rates: latest.rates,
+    source: RBNZ_B2_URL,
+    observationDate,
+    rates,
     warnings,
   };
 }

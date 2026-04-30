@@ -339,7 +339,7 @@ export default function BreakFeeCalculator() {
                         rel="noopener noreferrer"
                         className="text-[#228EBF] hover:underline"
                       >
-                        interest.co.nz
+                        RBNZ B2 (daily close)
                       </a>
                       {' · '}
                       Auto-fills "swap rate today" using linear interp between curve points
