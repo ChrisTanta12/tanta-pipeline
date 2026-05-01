@@ -149,3 +149,98 @@ CREATE TABLE IF NOT EXISTS swap_rates (
 
 CREATE INDEX IF NOT EXISTS swap_rates_observation_date_desc ON swap_rates (observation_date DESC);
 
+
+-- =====================================================
+-- /finance route — Profit First overlay + cycle reporting
+-- Backs the auth-gated /finance page Chris uses for fortnightly + quarterly
+-- catch-ups with Anthony. Also feeds the snapshot.json that Cowork sessions
+-- read for conversational analysis (see scripts/finance-snapshot.ts).
+-- =====================================================
+
+-- One row per fortnightly cycle. The cycle ends on the allocation date.
+-- Cycle data is mostly summary rollups; raw transaction-level data stays in
+-- the bank statement CSVs in the Tanta-Finance/inputs folder for now.
+CREATE TABLE IF NOT EXISTS finance_cycles (
+  cycle_end_date          DATE PRIMARY KEY,
+  cycle_start_date        DATE NOT NULL,
+  quarter                 TEXT NOT NULL,                         -- e.g. '2026Q1'
+
+  -- Trading income (mortgage commission + recurring trail).
+  -- Cash basis = what hit Tanta Income this cycle.
+  -- Earned basis = what KAN/SHL etc. invoiced for this cycle (may differ by lag).
+  trading_income_cash     NUMERIC(12, 2) NOT NULL DEFAULT 0,
+  trading_income_earned   NUMERIC(12, 2) NOT NULL DEFAULT 0,
+  trail_income            NUMERIC(12, 2) NOT NULL DEFAULT 0,
+  upfront_income          NUMERIC(12, 2) NOT NULL DEFAULT 0,
+
+  -- Per-source breakdown: { "KAN": {trail, upfront, refix, clawback}, "SHL": {trail, upfront}, "Booster": {trail}, ... }
+  income_by_source        JSONB NOT NULL DEFAULT '{}'::jsonb,
+
+  -- Profit First allocations.
+  -- prescribed = what the live TAPs would dictate.
+  -- actual = what bank rules actually transferred.
+  -- Drift between the two is the "TAP execution drift" Controller flag.
+  allocations_prescribed  JSONB NOT NULL DEFAULT '{}'::jsonb,   -- { opex, salaries, tax, profit }
+  allocations_actual      JSONB NOT NULL DEFAULT '{}'::jsonb,
+
+  -- True operating Opex outflow this cycle (rent + SaaS via CC + GST + insurance + ...).
+  -- EXCLUDES drawings, inter-account transfers, and capital deployments.
+  true_opex               NUMERIC(12, 2) NOT NULL DEFAULT 0,
+  opex_by_category        JSONB NOT NULL DEFAULT '{}'::jsonb,   -- { rent, saas, insurance, gst, ... }
+
+  -- Drawings split 50/50 by policy. Stored separately so historical changes
+  -- can be detected / explained.
+  drawings_chris          NUMERIC(12, 2) NOT NULL DEFAULT 0,
+  drawings_anthony        NUMERIC(12, 2) NOT NULL DEFAULT 0,
+
+  -- Account balances at cycle close. Snapshot for variance tracking.
+  -- { "Tanta Income": 18968.70, "Opex 8.1K": 7791.06, "Tax (external)": 6818.41, ... }
+  account_balances_end    JSONB NOT NULL DEFAULT '{}'::jsonb,
+
+  -- Pre-computed flags from the analyst phase. Each entry: { severity, title, body }.
+  flags                   JSONB NOT NULL DEFAULT '[]'::jsonb,
+
+  -- Free-text notes Chris/Anthony want to capture against this cycle.
+  notes                   TEXT,
+
+  created_at              TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at              TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS finance_cycles_quarter ON finance_cycles (quarter);
+CREATE INDEX IF NOT EXISTS finance_cycles_recent  ON finance_cycles (cycle_end_date DESC);
+
+-- TAPs and account map, versioned. Insert a new row when TAPs change at the
+-- quarterly review. Historical cycles still reference their effective config
+-- by date so retrospective math stays accurate after a TAP change.
+CREATE TABLE IF NOT EXISTS finance_config (
+  id              SERIAL PRIMARY KEY,
+  effective_from  DATE NOT NULL,
+  effective_to    DATE,                                          -- NULL = current row
+  taps            JSONB NOT NULL,                                -- { opex, salaries, tax, profit }
+  account_map     JSONB NOT NULL,                                -- { "Tanta Income": "...", ... }
+  notes           TEXT,
+  created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS finance_config_current
+  ON finance_config (effective_from DESC) WHERE effective_to IS NULL;
+
+-- Capital movements are explicitly separate from trading income to prevent
+-- accidentally rolling them into PF allocation math. Asset sales (Halo book
+-- purchase), contractor pass-throughs (Aaron wash-up), reserve top-ups,
+-- principal loan repayments etc. all live here.
+CREATE TABLE IF NOT EXISTS finance_capital_movements (
+  id              SERIAL PRIMARY KEY,
+  movement_date   DATE NOT NULL,
+  cycle_end_date  DATE REFERENCES finance_cycles(cycle_end_date) ON DELETE SET NULL,
+  kind            TEXT NOT NULL,                                 -- asset_sale | contractor_passthrough | reserve_topup | loan_principal | etc.
+  amount          NUMERIC(12, 2) NOT NULL,                       -- positive = inflow, negative = outflow
+  description     TEXT,
+  payee_or_payer  TEXT,
+  notes           TEXT,
+  created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS finance_capital_movements_date  ON finance_capital_movements (movement_date DESC);
+CREATE INDEX IF NOT EXISTS finance_capital_movements_cycle ON finance_capital_movements (cycle_end_date);
