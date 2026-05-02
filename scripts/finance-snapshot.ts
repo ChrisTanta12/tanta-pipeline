@@ -52,7 +52,7 @@ async function main() {
 
   console.log(`✓ Snapshot written: ${outPath}`);
   console.log(`  schema_version: ${snapshot.schema_version}`);
-  console.log(`  cycles: ${cycles.length}`);
+  console.log(`  fortnights: ${cycles.length}`);
   console.log(`  capital_movements: ${capitalMovements.length}`);
   console.log(`  generated_at: ${snapshot.generated_at}`);
 }

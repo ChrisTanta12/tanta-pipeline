@@ -3,7 +3,7 @@
  * Tanta-Finance/reports/2026-Q1-7cycle-review.html.
  *
  * Idempotent: uses ON CONFLICT for cycles, deletes & re-inserts config and
- * capital movements. Safe to re-run as the cycle figures get refined.
+ * capital movements. Safe to re-run as the fortnight figures get refined.
  *
  * Usage: npm run finance:seed
  */
@@ -32,7 +32,7 @@ type Cycle = {
 };
 
 // =====================================================
-// Q1 2026 cycles — derived from real bank statement + KAN + SHL analysis
+// Q1 2026 fortnights — derived from real bank statement + KAN + SHL analysis
 // (see Tanta-Finance/reports/ for full traceability)
 // =====================================================
 const CYCLES: Cycle[] = [
@@ -68,7 +68,7 @@ const CYCLES: Cycle[] = [
     flags: [
       { severity: 'warn', title: 'TAP execution drift', body: 'Bank rules at 50/45/4/1, sheet TAPs at 49/45/4/2. Profit short ~$215.' },
     ],
-    notes: 'First cycle of 2026.',
+    notes: 'First fortnight of 2026.',
   },
   {
     cycleEndDate: '2026-01-28',
@@ -99,7 +99,7 @@ const CYCLES: Cycle[] = [
     drawingsAnthony: 9500.00,
     accountBalancesEnd: {},
     flags: [
-      { severity: 'warn', title: 'Double drawings round', body: 'Two rounds of personal drawings hit this cycle (20/01 + 28/01). Total $19k, larger than usual $11k.' },
+      { severity: 'warn', title: 'Double drawings round', body: 'Two rounds of personal drawings hit this fortnight (20/01 + 28/01). Total $19k, larger than usual $11k.' },
     ],
     notes: 'Includes Luke contractor portion paid separately ($9,012.37 to Payroll). Excluded from PF allocation base.',
   },
@@ -129,7 +129,7 @@ const CYCLES: Cycle[] = [
     drawingsAnthony: 5500.00,
     accountBalancesEnd: {},
     flags: [],
-    notes: 'Strong cycle. SHL Riahi settlement upfront $10,182. Reserve top-up $4,385 made 12/02.',
+    notes: 'Strong fortnight. SHL Riahi settlement upfront $10,182. Reserve top-up $4,385 made 12/02.',
   },
   {
     cycleEndDate: '2026-02-25',
@@ -156,7 +156,7 @@ const CYCLES: Cycle[] = [
     drawingsAnthony: 5500.00,
     accountBalancesEnd: {},
     flags: [
-      { severity: 'warn', title: 'Genuinely low-income cycle', body: 'Trading income only $909 — no PF transfers made. Halo asset sale $12,750 came in on 17/02 (capital, not income) and proceeds went directly to CC for Lean Marketing.' },
+      { severity: 'warn', title: 'Genuinely low-income fortnight', body: 'Trading income only $909 — no PF transfers made. Halo asset sale $12,750 came in on 17/02 (capital, not income) and proceeds went directly to CC for Lean Marketing.' },
     ],
     notes: 'Halo book-purchase channelled directly to CC. See capital movements.',
   },
@@ -186,7 +186,7 @@ const CYCLES: Cycle[] = [
     drawingsAnthony: 5500.00,
     accountBalancesEnd: {},
     flags: [],
-    notes: '$721.59 GST topup paid to IRD. $5,319 retained as buffer (used next cycle).',
+    notes: '$721.59 GST topup paid to IRD. $5,319 retained as buffer (used next fortnight).',
   },
   {
     cycleEndDate: '2026-04-08',
@@ -215,9 +215,9 @@ const CYCLES: Cycle[] = [
     drawingsAnthony: 6287.00,
     accountBalancesEnd: {},
     flags: [
-      { severity: 'warn', title: 'Q2 first cycle — quarterly TAP review pending', body: 'First cycle of Q2 2026. The quarterly TAP review (alongside Q1 Profit Distribution) should be on the 22/04 catch-up agenda.' },
+      { severity: 'warn', title: 'Q2 first fortnight — quarterly TAP review pending', body: 'First fortnight of Q2 2026. The quarterly TAP review (alongside Q1 Profit Distribution) should be on the 22/04 catch-up agenda.' },
     ],
-    notes: 'First cycle of Q2 2026. Larger drawings round ($5,637 each + expenses).',
+    notes: 'First fortnight of Q2 2026. Larger drawings round ($5,637 each + expenses).',
   },
   {
     cycleEndDate: '2026-03-25',
@@ -255,9 +255,9 @@ const CYCLES: Cycle[] = [
       'Tax (external)': 6818.41,
     },
     flags: [
-      { severity: 'warn', title: 'Non-standard cycle allocation', body: '"Shareholder allocation remainder" of $8,028.56 used instead of separate Tax/Salaries lines. Buffer from prior cycle covered the maths.' },
+      { severity: 'warn', title: 'Non-standard fortnight allocation', body: '"Shareholder allocation remainder" of $8,028.56 used instead of separate Tax/Salaries lines. Buffer from prior fortnight covered the maths.' },
     ],
-    notes: 'Last cycle of Q1. Used the $5,319 buffer carried from 11/03.',
+    notes: 'Last fortnight of Q1. Used the $5,319 buffer carried from 11/03.',
   },
 ];
 
@@ -330,7 +330,7 @@ const CAPITAL = [
     amount: 4385.07,
     description: 'New Hire 30K reserve top-up',
     payeeOrPayer: 'Opex 8.1K → New Hire 30K',
-    notes: 'Only reserve top-up in Q1. Authorised to be more frequent (~$1.5k/cycle from Opex headroom).',
+    notes: 'Only reserve top-up in Q1. Authorised to be more frequent (~$1.5k/fortnight from Opex headroom).',
   },
 ];
 

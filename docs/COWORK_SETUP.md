@@ -64,13 +64,13 @@ stays identical.
 
 ## How Vercel writes the snapshot
 
-The cycle-close flow in the Vercel app calls `npm run finance:snapshot`, which writes
+The fortnight-close flow in the Vercel app calls `npm run finance:snapshot`, which writes
 `tanta_finance_snapshot.json` to whatever path `FINANCE_SNAPSHOT_PATH` resolves to.
 
 Two ways to wire that path:
 
 **Option A — Office PC writer (recommended)**: the office PC already runs `npm run trail:sync`
-on a schedule. Add a sibling cron task that runs `npm run finance:snapshot` after each cycle
+on a schedule. Add a sibling cron task that runs `npm run finance:snapshot` after each fortnight
 close. Set `FINANCE_SNAPSHOT_PATH` to the local path of the Drive-synced folder. Drive Desktop
 syncs the file out to all linked machines automatically.
 
@@ -84,8 +84,8 @@ Default for v1 is **Option A** — same office-PC proxy pattern Trail sync alrea
 
 Once set up, both principals can open Cowork on their machine and ask things like:
 
-- "Walk me through the latest cycle"
-- "Why did Opex spike on the 25/2 cycle?"
+- "Walk me through the latest fortnight"
+- "Why did Opex spike on the 25/2 fortnight?"
 - "What's worth flagging this fortnight?"
 - "Model what happens if we drop the Salaries TAP to 40% next quarter"
 - "Compare this quarter's trail income to last quarter"
@@ -98,7 +98,7 @@ Cowork reads:
 ## What Cowork CANNOT do (by design)
 
 - **Cannot write back to Postgres.** Snapshot is read-only. Insights from Cowork sessions
-  get pasted back into the Vercel app's notes field on a cycle, not directly to the DB.
+  get pasted back into the Vercel app's notes field on a fortnight, not directly to the DB.
 - **Cannot run while Claude Desktop is closed.** Cowork is a desktop tool. The Vercel app
   is the always-on surface; Cowork is the conversational add-on.
 - **Cannot share session state between Chris and Anthony.** Each runs their own Cowork.
@@ -107,8 +107,8 @@ Cowork reads:
 ## Privacy considerations
 
 The snapshot includes:
-- Cycle income totals, allocation amounts, expense category totals
-- Account balances at cycle close
+- Fortnight income totals, allocation amounts, expense category totals
+- Account balances at fortnight close
 - Capital movement amounts and counterparties
 - Pre-computed flags
 
