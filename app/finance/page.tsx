@@ -159,7 +159,7 @@ function Dashboard({ data, onLogout }: { data: DataResponse; onLogout: () => voi
         <div className="alloc">
           <h2 style={{ margin: 0, fontFamily: "'Manrope', sans-serif", fontSize: 22, color: 'var(--accent)' }}>No data yet</h2>
           <p style={{ fontSize: 13, color: 'var(--ink-2)' }}>
-            Run <code>npm run finance:seed</code> to load the Q1 2026 baseline cycles.
+            Run <code>npm run finance:seed</code> to load the Q1 2026 baseline fortnights.
           </p>
           <button onClick={onLogout} style={{ background: 'none', border: 0, fontSize: 12, color: 'var(--ink-3)', cursor: 'pointer' }}>Log out</button>
         </div>
@@ -186,11 +186,11 @@ function Dashboard({ data, onLogout }: { data: DataResponse; onLogout: () => voi
         <div className="section-head">
           <div>
             <div className="eyebrow">Fortnightly · 60-second read</div>
-            <h2>Cycle ending {formatLongDate(latestInQuarter.cycleEndDate)}</h2>
+            <h2>Fortnight ending {formatLongDate(latestInQuarter.cycleEndDate)}</h2>
           </div>
           <div className="section-meta">
-            Cycle {quarterCycles.indexOf(latestInQuarter) + 1} of {quarterCycles.length}
-            {isCurrent ? ' · in progress' : ` · last cycle of ${qLabel} 2026`}
+            Fortnight {quarterCycles.indexOf(latestInQuarter) + 1} of {quarterCycles.length}
+            {isCurrent ? ' · in progress' : ` · last fortnight of ${qLabel} 2026`}
           </div>
         </div>
 
@@ -209,7 +209,7 @@ function Dashboard({ data, onLogout }: { data: DataResponse; onLogout: () => voi
             <h2>{qLabel} 2026 — {quarterRangeLabel(selectedQuarter)}</h2>
           </div>
           <div className="section-meta">
-            {quarterCycles.length} {quarterCycles.length === 1 ? 'cycle' : 'cycles'}
+            {quarterCycles.length} {quarterCycles.length === 1 ? 'fortnight' : 'fortnights'}
             {isCurrent ? ' · in progress' : ` · closed ${formatLongDate(latestInQuarter.cycleEndDate)} · TAP review due`}
           </div>
         </div>
@@ -253,7 +253,7 @@ function AppHeader({ latestCycle, quarter, onLogout }: { latestCycle: string; qu
       </div>
       <div className="spacer" />
       <div className="meta">
-        Latest cycle <strong>{formatLongDate(latestCycle)}</strong> · <span>{quarter} 2026</span>
+        Latest fortnight <strong>{formatLongDate(latestCycle)}</strong> · <span>{quarter} 2026</span>
       </div>
       <button onClick={onLogout} className="logout">Sign out</button>
     </header>
@@ -280,7 +280,7 @@ function QuarterTabs({
     if (q === active) {
       const range = quarterRangeLabel(q);
       if (isCurrent) sub = `${range} · ${qcycles.length} of 6 · in progress`;
-      else if (hasData) sub = `${range} · ${qcycles.length} cycles · closed`;
+      else if (hasData) sub = `${range} · ${qcycles.length} fortnights · closed`;
       else sub = `${range} · no data yet`;
     }
     let state: 'active' | 'past' | 'future' = 'past';
@@ -334,7 +334,7 @@ function AllocationsPanel({ cycle }: { cycle: CycleRow }) {
     },
     {
       key: 'tax', name: 'Tax', pct: '4%',
-      dest: a.tax === 0 ? 'Tax (external) — non-standard cycle, see flag' : 'Tax (external)',
+      dest: a.tax === 0 ? 'Tax (external) — non-standard fortnight, see flag' : 'Tax (external)',
       amount: a.tax, checked: false, muted: a.tax === 0,
     },
     {
@@ -348,12 +348,12 @@ function AllocationsPanel({ cycle }: { cycle: CycleRow }) {
     <div className="alloc">
       <div className="panel-eyebrow">
         <span className="pip" />
-        <span className="eyebrow">Allocations · this cycle</span>
+        <span className="eyebrow">Allocations · this fortnight</span>
       </div>
 
       <div className="cycle-income">
         <div className="pills-row">
-          <span className="label-text">Cycle income</span>
+          <span className="label-text">Fortnight income</span>
         </div>
         <div className="amount tnum"><Money n={cycle.tradingIncomeCash} /></div>
         <div className="breakdown">
@@ -381,7 +381,7 @@ function AllocationsPanel({ cycle }: { cycle: CycleRow }) {
       ))}
 
       <div className="alloc-total">
-        <div className="label">Allocated this cycle</div>
+        <div className="label">Allocated this fortnight</div>
         <div className="amount tnum"><Money n={sum} /></div>
       </div>
 
@@ -392,12 +392,12 @@ function AllocationsPanel({ cycle }: { cycle: CycleRow }) {
         </div>
         <div className="note">
           <span className="marker">→</span>
-          <span><strong>TAPs (50/45/4/1)</strong> are reviewed quarterly. Per-cycle drift is expected and not flagged here.</span>
+          <span><strong>TAPs (50/45/4/1)</strong> are reviewed quarterly. Per-fortnight drift is expected and not flagged here.</span>
         </div>
         {isLowCycle && (
           <div className="quiet-note">
             <span className="qn-dot" />
-            <span><strong style={{ color: 'var(--ink)', fontWeight: 600 }}>Non-standard cycle.</strong> Used a shareholder allocation remainder this fortnight; buffer covered the maths. Logged for the quarterly TAP review — no action this cycle.</span>
+            <span><strong style={{ color: 'var(--ink)', fontWeight: 600 }}>Non-standard fortnight.</strong> Used a shareholder allocation remainder this fortnight; buffer covered the maths. Logged for the quarterly TAP review — no action this fortnight.</span>
           </div>
         )}
       </div>
@@ -427,7 +427,7 @@ function SummaryPanel({ cycle, agg }: { cycle: CycleRow; agg: FinanceSnapshot['h
   return (
     <div className="summary">
       <div className="summary-section">
-        <h3 className="s-title">How this cycle ran</h3>
+        <h3 className="s-title">How this fortnight ran</h3>
         <div className="row-pair">
           <div className="lbl">True operating expenses</div>
           <div className="val tnum">{fmtMoney(trueOpex)}
@@ -509,19 +509,19 @@ function GrowthFortnightly() {
   return (
     <div className="growth">
       <div className="placeholder-tag">PLACEHOLDER</div>
-      <div className="g-eyebrow">Growth · this cycle</div>
+      <div className="g-eyebrow">Growth · this fortnight</div>
       <div className="g-title">New clients &amp; marketing</div>
 
       <div className="g-top">
         <div className="g-stat">
           <div className="l">Active pipeline</div>
           <div className="v tnum">23 <span className="qual">clients</span></div>
-          <div className="d"><span className="ok">+4</span> since last cycle · 6 in approval</div>
+          <div className="d"><span className="ok">+4</span> since last fortnight · 6 in approval</div>
         </div>
         <div className="g-stat">
           <div className="l">Cost per lead</div>
           <div className="v tnum">$48</div>
-          <div className="d"><span className="ok">−12%</span> vs cycle avg ($55)</div>
+          <div className="d"><span className="ok">−12%</span> vs fortnight avg ($55)</div>
         </div>
       </div>
 
@@ -564,7 +564,7 @@ function GrowthFortnightly() {
             </div>
           </div>
           <div style={{ marginTop: 14, fontSize: 12, color: 'var(--ink-2)' }}>
-            <span style={{ fontFamily: 'var(--font-display)', fontWeight: 600, color: 'var(--ink)', fontSize: 14 }}>39%</span> call-to-client · <span style={{ color: 'var(--ok)' }}>+5pts vs last cycle</span>
+            <span style={{ fontFamily: 'var(--font-display)', fontWeight: 600, color: 'var(--ink)', fontSize: 14 }}>39%</span> call-to-client · <span style={{ color: 'var(--ok)' }}>+5pts vs last fortnight</span>
           </div>
         </div>
       </div>
@@ -601,7 +601,7 @@ function GrowthQuarter() {
           <div className="v tnum">25 <span className="qual">clients</span></div>
           <div className="m">
             <span style={{ display: 'inline-block', width: 6, height: 6, borderRadius: '50%', background: 'var(--ok)', marginRight: 6, verticalAlign: 1 }} />
-            <span style={{ color: 'var(--ok)', fontWeight: 500 }}>+19% qoq</span> · 4.2 / cycle avg
+            <span style={{ color: 'var(--ok)', fontWeight: 500 }}>+19% qoq</span> · 4.2 / fortnight avg
           </div>
         </div>
         <div className="gq-cell">
@@ -619,10 +619,10 @@ function GrowthQuarter() {
           <div className="m">9.7% of trading income · CAC <span style={{ fontFamily: 'var(--font-display)', fontWeight: 600, color: 'var(--ink)' }}>$456</span></div>
         </div>
         <div className="gq-cell">
-          <div className="l">New clients per cycle</div>
+          <div className="l">New clients per fortnight</div>
           <svg width="100%" viewBox={`0 0 ${W} ${H}`} style={{ display: 'block', marginTop: 6 }}>
             <line x1={pad.l} x2={W - pad.r} y1={targetY} y2={targetY} stroke="#457b9d" strokeWidth="1" strokeDasharray="3 3" />
-            <text x={W - pad.r} y={targetY - 4} fontSize="9.5" fill="#457b9d" textAnchor="end" fontFamily="Inter">target 4.5/cycle</text>
+            <text x={W - pad.r} y={targetY - 4} fontSize="9.5" fill="#457b9d" textAnchor="end" fontFamily="Inter">target 4.5/fortnight</text>
             {NEW_CLIENTS_BY_CYCLE.map((v, i) => {
               const x = pad.l + step * i + (step - barW) / 2;
               const h = (v / max) * innerH;
@@ -664,7 +664,7 @@ function KPIStrip({ cycles }: { cycles: CycleRow[] }) {
         <div className="kpi-eyebrow">Trading income</div>
         <div className="kpi-value tnum">{fmtMoneyK(totalIncome)}</div>
         <div className="kpi-meta">
-          {fmtMoneyK(totalEarned)} on a <span className="strong">KAN-earned</span> basis · {cycles.length} cycle{cycles.length === 1 ? '' : 's'}
+          {fmtMoneyK(totalEarned)} on a <span className="strong">KAN-earned</span> basis · {cycles.length} fortnight{cycles.length === 1 ? '' : 's'}
         </div>
       </div>
       <div className="kpi">
@@ -717,7 +717,7 @@ function IncomeByCycleChart({ cycles }: { cycles: CycleRow[] }) {
     <div className="chart-card">
       <div className="chart-head">
         <div>
-          <h3>Income by cycle</h3>
+          <h3>Income by fortnight</h3>
           <div className="chart-sub">Trail (recurring) versus upfront (new business).</div>
         </div>
         <div className="legend">
@@ -730,7 +730,7 @@ function IncomeByCycleChart({ cycles }: { cycles: CycleRow[] }) {
           <line x1={pad.l} x2={W - pad.r} y1={pad.t + innerH - (avg / max) * innerH} y2={pad.t + innerH - (avg / max) * innerH}
                 stroke="#457b9d" strokeWidth="1" strokeDasharray="3 3" />
           <text x={pad.l + 4} y={pad.t + innerH - (avg / max) * innerH - 4} fontSize="9.5" fill="#457b9d" fontFamily="Inter">
-            cycle avg {fmtMoneyK(avg)}
+            fortnight avg {fmtMoneyK(avg)}
           </text>
         </g>
         {yTicks.map((t, i) => {
@@ -772,7 +772,7 @@ function IncomeByCycleChart({ cycles }: { cycles: CycleRow[] }) {
       </svg>
       {totals.some(t => t < 2000) && (
         <div style={{ fontSize: 11, color: 'var(--ink-3)', marginTop: 8, fontStyle: 'italic' }}>
-          ¹ Low trading cycle. Capital movements (e.g. asset sales) are counted separately, not as income.
+          ¹ Low trading fortnight. Capital movements (e.g. asset sales) are counted separately, not as income.
         </div>
       )}
     </div>
@@ -828,14 +828,14 @@ function IncomeBySourceChart({ cycles }: { cycles: CycleRow[] }) {
       <div className="chart-head">
         <div>
           <h3>Income by source</h3>
-          <div className="chart-sub">{cycles.length} cycle{cycles.length === 1 ? '' : 's'} · trail + upfront combined.</div>
+          <div className="chart-sub">{cycles.length} fortnight{cycles.length === 1 ? '' : 's'} · trail + upfront combined.</div>
         </div>
       </div>
       <div style={{ display: 'grid', gridTemplateColumns: '220px 1fr', gap: 24, alignItems: 'center' }}>
         <svg width="220" height="220" viewBox="0 0 220 220">
           {arcs.map((a, i) => <path key={i} d={a.d} fill={a.color} />)}
           <text x={cx} y={cy + 4} fontSize="11" fill="#8b8d83" textAnchor="middle" fontFamily="Inter" letterSpacing="0.06em">
-            {cycles.length} {cycles.length === 1 ? 'CYCLE' : 'CYCLES'}
+            {cycles.length} {cycles.length === 1 ? 'FORTNIGHT' : 'FORTNIGHTS'}
           </text>
         </svg>
         <div style={{ display: 'grid', gap: 8 }}>
@@ -879,7 +879,7 @@ function DisciplinePanel({ cycles }: { cycles: CycleRow[] }) {
     <div className="chart-card" style={{ marginBottom: 40 }}>
       <div className="chart-head">
         <div>
-          <h3>Allocation discipline · per cycle</h3>
+          <h3>Allocation discipline · per fortnight</h3>
           <div className="chart-sub">
             Deviation from TAP. <span style={{ color: '#2d6a4f' }}>Below the line = opex under-spend (good)</span>.{' '}
             <span style={{ color: '#9b2226' }}>Above the line = drawings overrun (funded by that under-spend)</span>.
@@ -934,7 +934,7 @@ function DisciplinePanel({ cycles }: { cycles: CycleRow[] }) {
         </g>
       </svg>
       <div style={{ fontSize: 11.5, color: 'var(--ink-2)', marginTop: 12, lineHeight: 1.5, paddingTop: 12, borderTop: '1px solid var(--rule)' }}>
-        <strong style={{ color: 'var(--ink)', fontWeight: 600 }}>Read:</strong> the green bar typically exceeds the red — opex headroom funds the drawings overrun cycle by cycle.
+        <strong style={{ color: 'var(--ink)', fontWeight: 600 }}>Read:</strong> the green bar typically exceeds the red — opex headroom funds the drawings overrun fortnight by fortnight.
       </div>
     </div>
   );
@@ -957,13 +957,13 @@ function AllocationTable({ cycles }: { cycles: CycleRow[] }) {
       <div className="chart-head">
         <div>
           <h3 style={{ fontFamily: 'var(--font-display)', fontSize: 16, fontWeight: 600, margin: 0 }}>Allocation execution</h3>
-          <div className="chart-sub" style={{ marginTop: 4 }}>What we transferred each cycle. Totals reconcile to the bank.</div>
+          <div className="chart-sub" style={{ marginTop: 4 }}>What we transferred each fortnight. Totals reconcile to the bank.</div>
         </div>
       </div>
       <table className="data tnum">
         <thead>
           <tr>
-            <th>Cycle</th><th>Income</th><th>Opex 50%</th><th>Drawings 45%</th><th>Tax 4%</th><th>Profit 1%</th>
+            <th>Fortnight</th><th>Income</th><th>Opex 50%</th><th>Drawings 45%</th><th>Tax 4%</th><th>Profit 1%</th>
           </tr>
         </thead>
         <tbody>
@@ -974,7 +974,7 @@ function AllocationTable({ cycles }: { cycles: CycleRow[] }) {
               <tr key={c.cycleEndDate} style={low ? { background: '#faf6e8' } : undefined}>
                 <td>
                   {shortDate(c.cycleEndDate)}
-                  {low && <span style={{ color: '#9b2226', fontStyle: 'italic', fontSize: 11, marginLeft: 6 }}>low cycle</span>}
+                  {low && <span style={{ color: '#9b2226', fontStyle: 'italic', fontSize: 11, marginLeft: 6 }}>low fortnight</span>}
                 </td>
                 <td className="num">{fmtMoney(inc)}</td>
                 <td className="num">{fmtMoney(c.allocationsActual.opex)}</td>

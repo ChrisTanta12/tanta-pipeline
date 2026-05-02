@@ -1,6 +1,6 @@
 # /finance route — architecture & runbook
 
-Auth-gated dashboard for Tanta's fortnightly Profit First overlay + cycle reporting.
+Auth-gated dashboard for Tanta's fortnightly Profit First overlay + fortnight reporting.
 Designed alongside the existing `Tanta-Finance/` workflow folder in Chris's Claude Home Base
 (skills folder). The Vercel app is the **canonical data store**; Cowork sessions read a
 JSON snapshot exported from Postgres. Same skill files drive both surfaces.
@@ -9,7 +9,7 @@ JSON snapshot exported from Postgres. Same skill files drive both surfaces.
 
 ```
 Bank statements / KAN xlsx / SHL CSVs
-                │ (cycle close)
+                │ (fortnight close)
                 ▼
         finance_cycles + finance_capital_movements (Postgres)
                 │
@@ -25,13 +25,13 @@ Bank statements / KAN xlsx / SHL CSVs
 | Path | Purpose |
 |---|---|
 | `db/schema.sql` (additions) | New tables: `finance_cycles`, `finance_config`, `finance_capital_movements` |
-| `app/lib/finance-types.ts` | TypeScript types for cycles + config + capital + snapshot |
+| `app/lib/finance-types.ts` | TypeScript types for fortnights + config + capital + snapshot |
 | `app/lib/finance-db.ts` | Read helpers (getRecentCycles, getCurrentConfig, etc.) |
 | `app/lib/finance-auth.ts` | Server-side cookie verification (HMAC-signed) |
 | `app/api/finance-unlock/route.ts` | POST PIN → sets HttpOnly signed cookie. DELETE clears. |
-| `app/api/finance-data/route.ts` | GET (auth-gated) → cycles + config + capital + aggregates |
+| `app/api/finance-data/route.ts` | GET (auth-gated) → fortnights + config + capital + aggregates |
 | `app/finance/page.tsx` | The dashboard (PIN gate + allocations-top design) |
-| `scripts/seed-finance.ts` | Seed Q1 2026 baseline cycles. `npm run finance:seed` |
+| `scripts/seed-finance.ts` | Seed Q1 2026 baseline fortnights. `npm run finance:seed` |
 | `scripts/finance-snapshot.ts` | Export Postgres → JSON file for Cowork. `npm run finance:snapshot` |
 | `docs/FINANCE_ROUTE.md` | This file |
 | `docs/COWORK_SETUP.md` | How Chris + Anthony wire Cowork to read the snapshot |
@@ -69,11 +69,11 @@ existing tables. To apply:
 
 ```bash
 npm run db:migrate
-npm run finance:seed       # populates Q1 2026 baseline (6 cycles)
+npm run finance:seed       # populates Q1 2026 baseline (6 fortnights)
 npm run finance:snapshot   # writes tanta_finance_snapshot.json
 ```
 
-The migrate is safe to run repeatedly. `finance:seed` uses `ON CONFLICT` for cycles
+The migrate is safe to run repeatedly. `finance:seed` uses `ON CONFLICT` for fortnights
 and `DELETE`+re-insert for capital movements within the seeded date range, so re-running
 refines existing rows rather than duplicating.
 
@@ -94,9 +94,9 @@ npm run dev
 - **Charts** — the seeded data renders as KPIs + tables. Charts (Chart.js mirror of the
   HTML mockups in `Tanta-Finance/reports/`) are the next iteration once the data shape
   is validated.
-- **Cycle ingest from CSVs** — currently cycles land via `seed-finance.ts` with hardcoded
+- **Fortnight ingest from CSVs** — currently fortnights land via `seed-finance.ts` with hardcoded
   values. The next iteration adds an ingestion endpoint that reads bank-statement CSVs
-  and produces a cycle row, mirroring `Tanta-Finance/inputs/categorize.mjs`.
+  and produces a fortnight row, mirroring `Tanta-Finance/inputs/categorize.mjs`.
 - **Real auth** — see "Auth — interim" above.
 - **Trail integration into the dashboard** — the pipeline forecast section uses Trail
   data via existing `/api/opportunities`; that wire-in is its own iteration.
@@ -118,7 +118,7 @@ for full context.
    (Halo book purchase), contractor pass-throughs (Aaron / Luke), reserve top-ups —
    all live in `finance_capital_movements`, never folded into the income figure.
 5. **TAPs are reviewed quarterly.** Drift between quarters is normal and intentional.
-   `finance_config` is versioned; historical cycles still reference their effective
+   `finance_config` is versioned; historical fortnights still reference their effective
    config so retrospective math stays accurate when TAPs change.
 6. **The fortnightly cadence drives every other Wednesday's catch-up.** Intermediate
    Wednesdays are general business / project check-ins — different agenda, not this
