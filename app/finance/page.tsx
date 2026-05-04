@@ -11,7 +11,8 @@ import type {
 
 /* ============================================================================
    /finance — design v2 (Claude design handoff, May 2026)
-   Single page; both fortnightly and quarterly views stack on one canvas.
+   View toggle (fortnightly | quarterly) swaps the canvas between the
+   action-focused fortnightly view and the boardroom-grade quarterly review.
    See app/finance/styles.css for the visual styling.
    ============================================================================ */
 
@@ -21,6 +22,8 @@ type DataResponse = {
   capitalMovements: CapitalMovement[];
   historyAggregates: FinanceSnapshot['history_aggregates'];
 };
+
+type ViewMode = 'fortnight' | 'quarter';
 
 const ALL_QUARTERS_2026 = ['2026Q1', '2026Q2', '2026Q3', '2026Q4'];
 
@@ -150,6 +153,7 @@ function Dashboard({ data, onLogout }: { data: DataResponse; onLogout: () => voi
   }, [cyclesByQuarter]);
 
   const [selectedQuarter, setSelectedQuarter] = useState<string>(defaultQuarter);
+  const [view, setView] = useState<ViewMode>('fortnight');
   const quarterCycles = cyclesByQuarter.get(selectedQuarter) ?? [];
   const latestInQuarter = quarterCycles[quarterCycles.length - 1] ?? cycles[0];
 
@@ -174,59 +178,86 @@ function Dashboard({ data, onLogout }: { data: DataResponse; onLogout: () => voi
 
   return (
     <>
-      <AppHeader latestCycle={latestInQuarter.cycleEndDate} quarter={qLabel} onLogout={onLogout} />
+      <AppHeader
+        latestCycle={latestInQuarter.cycleEndDate}
+        quarter={qLabel}
+        view={view}
+        onView={setView}
+        onLogout={onLogout}
+      />
       <QuarterTabs
         active={selectedQuarter}
         onSelect={setSelectedQuarter}
         cyclesByQuarter={cyclesByQuarter}
+        view={view}
       />
 
       <div className="page">
-        {/* ─── Fortnightly view ─── */}
-        <div className="section-head">
-          <div>
-            <div className="eyebrow">Fortnightly · 60-second read</div>
-            <h2>Fortnight ending {formatLongDate(latestInQuarter.cycleEndDate)}</h2>
-          </div>
-          <div className="section-meta">
-            Fortnight {quarterCycles.indexOf(latestInQuarter) + 1} of {quarterCycles.length}
-            {isCurrent ? ' · in progress' : ` · last fortnight of ${qLabel} 2026`}
-          </div>
-        </div>
+        {view === 'fortnight' ? (
+          <>
+            {/* ─── Fortnightly view ─── */}
+            <div className="section-head">
+              <div>
+                <div className="eyebrow">Fortnightly · 60-second read</div>
+                <h2>Fortnight ending {formatLongDate(latestInQuarter.cycleEndDate)}</h2>
+              </div>
+              <div className="section-meta">
+                Fortnight {quarterCycles.indexOf(latestInQuarter) + 1} of {quarterCycles.length}
+                {isCurrent ? ' · in progress' : ` · last fortnight of ${qLabel} 2026`}
+              </div>
+            </div>
 
-        <div className="split">
-          <AllocationsPanel cycle={latestInQuarter} />
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 28 }}>
-            <SummaryPanel cycle={latestInQuarter} agg={data.historyAggregates} />
-            <GrowthFortnightly />
-          </div>
-        </div>
+            <div className="split">
+              <AllocationsPanel cycle={latestInQuarter} />
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 28 }}>
+                <SummaryPanel cycle={latestInQuarter} agg={data.historyAggregates} />
+                <GrowthFortnightly />
+              </div>
+            </div>
 
-        {/* ─── Quarterly review ─── */}
-        <div className="section-head">
-          <div>
-            <div className="eyebrow">Quarterly review · 5–10 minutes</div>
-            <h2>{qLabel} 2026 — {quarterRangeLabel(selectedQuarter)}</h2>
-          </div>
-          <div className="section-meta">
-            {quarterCycles.length} {quarterCycles.length === 1 ? 'fortnight' : 'fortnights'}
-            {isCurrent ? ' · in progress' : ` · closed ${formatLongDate(latestInQuarter.cycleEndDate)} · TAP review due`}
-          </div>
-        </div>
+            <div className="view-jump">
+              <span>Want the bigger picture?</span>
+              <button type="button" onClick={() => setView('quarter')}>
+                Switch to {qLabel} review →
+              </button>
+            </div>
+          </>
+        ) : (
+          <>
+            {/* ─── Quarterly review ─── */}
+            <div className="section-head">
+              <div>
+                <div className="eyebrow">Quarterly review · 5–10 minutes</div>
+                <h2>{qLabel} 2026 — {quarterRangeLabel(selectedQuarter)}</h2>
+              </div>
+              <div className="section-meta">
+                {quarterCycles.length} {quarterCycles.length === 1 ? 'fortnight' : 'fortnights'}
+                {isCurrent ? ' · in progress' : ` · closed ${formatLongDate(latestInQuarter.cycleEndDate)} · TAP review due`}
+              </div>
+            </div>
 
-        <KPIStrip cycles={quarterCycles} />
-        <GrowthQuarter />
+            <KPIStrip cycles={quarterCycles} />
+            <GrowthQuarter />
 
-        <div className="charts-grid">
-          <IncomeByCycleChart cycles={quarterCycles} />
-          <IncomeBySourceChart cycles={quarterCycles} />
-        </div>
+            <div className="charts-grid">
+              <IncomeByCycleChart cycles={quarterCycles} />
+              <IncomeBySourceChart cycles={quarterCycles} />
+            </div>
 
-        <DisciplinePanel cycles={quarterCycles} />
-        <AllocationTable cycles={quarterCycles} />
-        <CapitalTable
-          movements={data.capitalMovements.filter(m => quarterFromDate(m.movementDate) === selectedQuarter)}
-        />
+            <DisciplinePanel cycles={quarterCycles} />
+            <AllocationTable cycles={quarterCycles} />
+            <CapitalTable
+              movements={data.capitalMovements.filter(m => quarterFromDate(m.movementDate) === selectedQuarter)}
+            />
+
+            <div className="view-jump">
+              <span>Back to the action artefact</span>
+              <button type="button" onClick={() => setView('fortnight')}>
+                ← Switch to fortnight ending {formatLongDate(latestInQuarter.cycleEndDate)}
+              </button>
+            </div>
+          </>
+        )}
 
         <div className="footer-meta">
           <span>Tanta-Finance · Postgres canonical · Cowork reads a snapshot for conversational analysis.</span>
@@ -240,7 +271,15 @@ function Dashboard({ data, onLogout }: { data: DataResponse; onLogout: () => voi
 // ============================================================================
 // Header + tabs
 // ============================================================================
-function AppHeader({ latestCycle, quarter, onLogout }: { latestCycle: string; quarter: string; onLogout: () => void }) {
+function AppHeader({
+  latestCycle, quarter, view, onView, onLogout,
+}: {
+  latestCycle: string;
+  quarter: string;
+  view: ViewMode;
+  onView: (v: ViewMode) => void;
+  onLogout: () => void;
+}) {
   return (
     <header className="app-header">
       <div className="brand">
@@ -252,6 +291,7 @@ function AppHeader({ latestCycle, quarter, onLogout }: { latestCycle: string; qu
         <div className="title">Money catch-up</div>
       </div>
       <div className="spacer" />
+      <ViewToggle view={view} onChange={onView} />
       <div className="meta">
         Latest fortnight <strong>{formatLongDate(latestCycle)}</strong> · <span>{quarter} 2026</span>
       </div>
@@ -260,12 +300,38 @@ function AppHeader({ latestCycle, quarter, onLogout }: { latestCycle: string; qu
   );
 }
 
+function ViewToggle({ view, onChange }: { view: ViewMode; onChange: (v: ViewMode) => void }) {
+  return (
+    <div className="view-toggle" role="tablist" aria-label="Report view">
+      <button
+        type="button"
+        role="tab"
+        aria-selected={view === 'fortnight'}
+        className={view === 'fortnight' ? 'on' : ''}
+        onClick={() => onChange('fortnight')}
+      >
+        Fortnightly
+      </button>
+      <button
+        type="button"
+        role="tab"
+        aria-selected={view === 'quarter'}
+        className={view === 'quarter' ? 'on' : ''}
+        onClick={() => onChange('quarter')}
+      >
+        Quarterly
+      </button>
+    </div>
+  );
+}
+
 function QuarterTabs({
-  active, onSelect, cyclesByQuarter,
+  active, onSelect, cyclesByQuarter, view,
 }: {
   active: string;
   onSelect: (q: string) => void;
   cyclesByQuarter: Map<string, CycleRow[]>;
+  view: ViewMode;
 }) {
   const today = new Date();
   const currentQ = `${today.getFullYear()}Q${Math.floor(today.getMonth() / 3) + 1}`;
@@ -279,9 +345,16 @@ function QuarterTabs({
     let sub = '';
     if (q === active) {
       const range = quarterRangeLabel(q);
-      if (isCurrent) sub = `${range} · ${qcycles.length} of 6 · in progress`;
-      else if (hasData) sub = `${range} · ${qcycles.length} fortnights · closed`;
-      else sub = `${range} · no data yet`;
+      if (view === 'fortnight') {
+        // In fortnightly view we surface the latest-fortnight framing
+        if (isCurrent) sub = `${range} · latest of ${qcycles.length} in progress`;
+        else if (hasData) sub = `${range} · latest of ${qcycles.length} fortnights`;
+        else sub = `${range} · no data yet`;
+      } else {
+        if (isCurrent) sub = `${range} · ${qcycles.length} of 6 · in progress`;
+        else if (hasData) sub = `${range} · ${qcycles.length} fortnights · closed`;
+        else sub = `${range} · no data yet`;
+      }
     }
     let state: 'active' | 'past' | 'future' = 'past';
     if (q === active) state = 'active';
@@ -305,7 +378,11 @@ function QuarterTabs({
         </button>
       ))}
       <div className="qtabs-spacer" />
-      <div className="qtabs-side">Profit First · TAPs reviewed quarterly</div>
+      <div className="qtabs-side">
+        {view === 'fortnight'
+          ? 'Action artefact · allocations top line'
+          : 'Profit First · TAPs reviewed quarterly'}
+      </div>
     </div>
   );
 }
