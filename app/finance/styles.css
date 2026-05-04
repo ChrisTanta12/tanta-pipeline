@@ -128,6 +128,120 @@
 }
 .tanta-finance-root .view-toggle button.on:hover { color: var(--navy); }
 
+/* ---------- Fortnight picker (within fortnightly view) ---------- */
+.tanta-finance-root .fortnight-picker {
+  background: var(--paper);
+  border-radius: var(--radius-lg);
+  padding: 18px 22px 16px;
+  box-shadow: var(--lift);
+  margin-bottom: 28px;
+}
+.tanta-finance-root .fortnight-picker .fp-label {
+  font-family: var(--font-display);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--ink-2);
+  margin-bottom: 12px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.tanta-finance-root .fortnight-picker .fp-count {
+  font-weight: 500;
+  color: var(--ink-3);
+  letter-spacing: 0.04em;
+  text-transform: none;
+}
+.tanta-finance-root .fortnight-picker .fp-controls {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.tanta-finance-root .fortnight-picker .fp-pills {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  flex: 1;
+}
+.tanta-finance-root .fortnight-picker .fp-pill {
+  appearance: none;
+  background: var(--soft);
+  border: 1px solid transparent;
+  border-radius: 9999px;
+  padding: 7px 14px;
+  display: inline-flex;
+  align-items: baseline;
+  gap: 8px;
+  cursor: pointer;
+  font-family: inherit;
+  color: var(--ink-2);
+  transition: background-color 120ms ease, color 120ms ease, border-color 120ms ease;
+}
+.tanta-finance-root .fortnight-picker .fp-pill:hover {
+  background: var(--navy-tint);
+  color: var(--navy);
+}
+.tanta-finance-root .fortnight-picker .fp-pill.on {
+  background: var(--navy);
+  color: #fff;
+  border-color: var(--navy);
+}
+.tanta-finance-root .fortnight-picker .fp-pill .fp-pill-num {
+  font-family: var(--font-display);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  opacity: 0.7;
+}
+.tanta-finance-root .fortnight-picker .fp-pill.on .fp-pill-num { opacity: 0.85; }
+.tanta-finance-root .fortnight-picker .fp-pill .fp-pill-date {
+  font-family: var(--font-display);
+  font-weight: 600;
+  font-size: 13px;
+  letter-spacing: -0.005em;
+  font-variant-numeric: tabular-nums;
+}
+.tanta-finance-root .fortnight-picker .fp-pill .fp-pill-tag {
+  font-size: 9.5px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  background: rgba(255,255,255,0.18);
+  color: rgba(255,255,255,0.9);
+  padding: 2px 7px;
+  border-radius: 9999px;
+}
+.tanta-finance-root .fortnight-picker .fp-pill:not(.on) .fp-pill-tag {
+  background: var(--ok-tint);
+  color: var(--ok);
+}
+.tanta-finance-root .fortnight-picker .fp-step {
+  appearance: none;
+  background: transparent;
+  border: 1px solid var(--rule);
+  border-radius: 9999px;
+  width: 32px;
+  height: 32px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  color: var(--ink-2);
+  font-size: 14px;
+  flex-shrink: 0;
+}
+.tanta-finance-root .fortnight-picker .fp-step:hover:not(:disabled) {
+  background: var(--soft);
+  color: var(--navy);
+  border-color: var(--navy-pale);
+}
+.tanta-finance-root .fortnight-picker .fp-step:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+}
+
 /* ---------- View-jump (link between fortnightly ↔ quarterly) ---------- */
 .tanta-finance-root .view-jump {
   margin-top: 32px;
