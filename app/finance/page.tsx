@@ -157,6 +157,19 @@ function Dashboard({ data, onLogout }: { data: DataResponse; onLogout: () => voi
   const quarterCycles = cyclesByQuarter.get(selectedQuarter) ?? [];
   const latestInQuarter = quarterCycles[quarterCycles.length - 1] ?? cycles[0];
 
+  // Fortnight selection within selected quarter — defaults to the latest in
+  // the quarter; resets whenever the user switches quarters.
+  const [selectedFortnightDate, setSelectedFortnightDate] = useState<string | null>(null);
+  useEffect(() => {
+    setSelectedFortnightDate(quarterCycles[quarterCycles.length - 1]?.cycleEndDate ?? null);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedQuarter, cycles.length]);
+
+  const selectedCycle =
+    quarterCycles.find(c => c.cycleEndDate === selectedFortnightDate) ?? latestInQuarter;
+  const selectedIndex = quarterCycles.indexOf(selectedCycle);
+  const isLatestInQuarter = selectedIndex === quarterCycles.length - 1;
+
   if (!latestInQuarter || !data.config) {
     return (
       <div className="page" style={{ padding: 32 }}>
@@ -196,21 +209,33 @@ function Dashboard({ data, onLogout }: { data: DataResponse; onLogout: () => voi
         {view === 'fortnight' ? (
           <>
             {/* ─── Fortnightly view ─── */}
+            <FortnightPicker
+              cycles={quarterCycles}
+              selectedDate={selectedCycle.cycleEndDate}
+              onSelect={setSelectedFortnightDate}
+              quarterLabel={qLabel}
+              isCurrentQuarter={isCurrent}
+            />
+
             <div className="section-head">
               <div>
                 <div className="eyebrow">Fortnightly · 60-second read</div>
-                <h2>Fortnight ending {formatLongDate(latestInQuarter.cycleEndDate)}</h2>
+                <h2>Fortnight ending {formatLongDate(selectedCycle.cycleEndDate)}</h2>
               </div>
               <div className="section-meta">
-                Fortnight {quarterCycles.indexOf(latestInQuarter) + 1} of {quarterCycles.length}
-                {isCurrent ? ' · in progress' : ` · last fortnight of ${qLabel} 2026`}
+                Fortnight {selectedIndex + 1} of {quarterCycles.length}
+                {isCurrent && isLatestInQuarter
+                  ? ' · in progress'
+                  : isLatestInQuarter
+                    ? ` · last fortnight of ${qLabel} 2026`
+                    : ` · ${qLabel} 2026`}
               </div>
             </div>
 
             <div className="split">
-              <AllocationsPanel cycle={latestInQuarter} />
+              <AllocationsPanel cycle={selectedCycle} />
               <div style={{ display: 'flex', flexDirection: 'column', gap: 28 }}>
-                <SummaryPanel cycle={latestInQuarter} agg={data.historyAggregates} />
+                <SummaryPanel cycle={selectedCycle} agg={data.historyAggregates} />
                 <GrowthFortnightly />
               </div>
             </div>
@@ -321,6 +346,75 @@ function ViewToggle({ view, onChange }: { view: ViewMode; onChange: (v: ViewMode
       >
         Quarterly
       </button>
+    </div>
+  );
+}
+
+// ----------------------------------------------------------------------------
+// Fortnight picker — pill row showing every fortnight in the selected quarter
+// ----------------------------------------------------------------------------
+function FortnightPicker({
+  cycles, selectedDate, onSelect, quarterLabel, isCurrentQuarter,
+}: {
+  cycles: CycleRow[];
+  selectedDate: string;
+  onSelect: (iso: string) => void;
+  quarterLabel: string;
+  isCurrentQuarter: boolean;
+}) {
+  if (cycles.length === 0) return null;
+  const idx = cycles.findIndex(c => c.cycleEndDate === selectedDate);
+  const prev = idx > 0 ? cycles[idx - 1] : null;
+  const next = idx >= 0 && idx < cycles.length - 1 ? cycles[idx + 1] : null;
+  const lastIdx = cycles.length - 1;
+
+  return (
+    <div className="fortnight-picker" role="tablist" aria-label="Fortnight">
+      <div className="fp-label">
+        Fortnight in {quarterLabel} 2026
+        <span className="fp-count">{cycles.length} total</span>
+      </div>
+      <div className="fp-controls">
+        <button
+          type="button"
+          className="fp-step"
+          aria-label="Previous fortnight"
+          disabled={!prev}
+          onClick={() => prev && onSelect(prev.cycleEndDate)}
+        >
+          ←
+        </button>
+        <div className="fp-pills">
+          {cycles.map((c, i) => {
+            const isActive = c.cycleEndDate === selectedDate;
+            const isLatestOfCurrent = isCurrentQuarter && i === lastIdx;
+            return (
+              <button
+                key={c.cycleEndDate}
+                type="button"
+                role="tab"
+                aria-selected={isActive}
+                className={`fp-pill ${isActive ? 'on' : ''}`}
+                onClick={() => onSelect(c.cycleEndDate)}
+                title={`Fortnight ${i + 1} of ${cycles.length} · ending ${formatLongDate(c.cycleEndDate)}`}
+              >
+                <span className="fp-pill-num">F{i + 1}</span>
+                <span className="fp-pill-date">{shortDate(c.cycleEndDate)}</span>
+                {isLatestOfCurrent && <span className="fp-pill-tag">latest</span>}
+              </button>
+            );
+          })}
+        </div>
+        <button
+          type="button"
+          className="fp-step"
+          aria-label="Next fortnight"
+          disabled={!next}
+          onClick={() => next && onSelect(next.cycleEndDate)}
+        >
+          →
+        </button>
+      </div>
     </div>
   );
 }
