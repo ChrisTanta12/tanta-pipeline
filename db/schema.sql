@@ -244,3 +244,92 @@ CREATE TABLE IF NOT EXISTS finance_capital_movements (
 
 CREATE INDEX IF NOT EXISTS finance_capital_movements_date  ON finance_capital_movements (movement_date DESC);
 CREATE INDEX IF NOT EXISTS finance_capital_movements_cycle ON finance_capital_movements (cycle_end_date);
+
+
+-- =====================================================
+-- /sales route — sales manager scorecard, targets, KS attach tracking
+-- Backs the /sales dashboard, the sales-manager Claude skill, and the
+-- weekly digest cron. All tables are additive; existing pipeline data
+-- (trail_entities, opportunity_stage_history, trail_profiles) is the
+-- primary source — these new tables only hold what isn't in Trail.
+-- =====================================================
+
+-- Targets the sales manager scores against. Single-row table (id = 1)
+-- with everything in one JSONB so adding a new metric doesn't need a
+-- migration. Auto-proposed from last-4-fortnights baselines on first
+-- read; PUT /api/sales/targets overrides.
+CREATE TABLE IF NOT EXISTS sales_targets (
+  id              INTEGER PRIMARY KEY DEFAULT 1,
+  targets         JSONB NOT NULL DEFAULT '{}'::jsonb,
+                  -- Shape (all optional):
+                  -- {
+                  --   "settlements_per_fortnight": 5,
+                  --   "new_leads_per_week": 10,
+                  --   "ks_attach_pct": 25,
+                  --   "source_concentration_ceiling_pct": 70
+                  -- }
+  updated_by      TEXT,                                          -- 'auto' | 'manual'
+  updated_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  CONSTRAINT sales_targets_singleton CHECK (id = 1)
+);
+
+-- Manual tracker of mortgage clients who became KiwiSaver clients.
+-- Sourced from a markdown table in Claude Home Base / Tanta Growth Project /
+-- ks-conversions.md (synced by scripts/ks-conversions-sync.ts). Trail's
+-- KS pipeline data isn't reliable enough yet to use directly; when it is,
+-- swap the sync source — same destination table, no consumer changes.
+CREATE TABLE IF NOT EXISTS ks_conversions (
+  profile_id          TEXT PRIMARY KEY,                          -- Trail profileId of the mortgage client
+  name                TEXT,
+  email               TEXT,
+  mortgage_settled    DATE,
+  ks_signed           DATE NOT NULL,
+  notes               TEXT,
+  synced_at           TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS ks_conversions_ks_signed ON ks_conversions (ks_signed DESC);
+
+-- Brevo contacts cache. Pulled by scripts/brevo-sync.ts (incremental on
+-- modifiedAt). Used by /api/sales/leads to count quiz/Home Hunt inflow,
+-- and by /api/sales/source-mix to attribute lead source.
+CREATE TABLE IF NOT EXISTS brevo_contacts (
+  email             TEXT PRIMARY KEY,
+  brevo_id          BIGINT,                                       -- Brevo's internal contact id
+  created_at        TIMESTAMPTZ,                                  -- contact's createdAt in Brevo
+  modified_at       TIMESTAMPTZ,                                  -- contact's modifiedAt in Brevo (used for incremental sync)
+  attributes        JSONB NOT NULL DEFAULT '{}'::jsonb,           -- QUIZ_TIER, URGENCY_SCORE, SOURCE, list memberships, ...
+  list_ids          INTEGER[] NOT NULL DEFAULT '{}',              -- Brevo list ids the contact belongs to
+  synced_at         TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS brevo_contacts_created  ON brevo_contacts (created_at DESC);
+CREATE INDEX IF NOT EXISTS brevo_contacts_modified ON brevo_contacts (modified_at DESC);
+
+-- One row per brevo-sync run. Sync watermarks let the next run resume
+-- from where the last one left off instead of paginating the full history.
+CREATE TABLE IF NOT EXISTS brevo_sync_runs (
+  id              SERIAL PRIMARY KEY,
+  started_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  finished_at     TIMESTAMPTZ,
+  status          TEXT NOT NULL DEFAULT 'running',                -- running | done | failed
+  contacts_seen   INTEGER NOT NULL DEFAULT 0,
+  contacts_upsert INTEGER NOT NULL DEFAULT 0,
+  watermark       TIMESTAMPTZ,                                    -- max(modifiedAt) seen in this run
+  error           TEXT
+);
+
+CREATE INDEX IF NOT EXISTS brevo_sync_runs_recent ON brevo_sync_runs (started_at DESC);
+
+-- Archive of weekly sales digests. Cron route renders the markdown via
+-- app/lib/sales/digest.ts and persists the body here. The /sales dashboard
+-- shows the latest digest; older entries can be referenced by cycle_start.
+CREATE TABLE IF NOT EXISTS sales_digests (
+  cycle_start    DATE PRIMARY KEY,                                -- ISO Monday of the week the digest covers
+  cycle_end      DATE NOT NULL,
+  generated_at   TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  scorecard      JSONB NOT NULL,                                  -- the full ScorecardResponse JSON
+  markdown       TEXT NOT NULL                                    -- rendered digest body
+);
+
+CREATE INDEX IF NOT EXISTS sales_digests_recent ON sales_digests (generated_at DESC);

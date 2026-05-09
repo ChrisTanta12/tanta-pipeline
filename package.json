@@ -17,7 +17,9 @@
     "seed:gemini": "tsx --env-file=.env.local scripts/seed-from-gemini.ts",
     "ingest:test": "tsx --env-file=.env.local scripts/test-pdf-ingest.ts",
     "finance:seed": "tsx --env-file=.env.local scripts/seed-finance.ts",
-    "finance:snapshot": "tsx --env-file=.env.local scripts/finance-snapshot.ts"
+    "finance:snapshot": "tsx --env-file=.env.local scripts/finance-snapshot.ts",
+    "brevo:sync": "tsx --env-file=.env.local scripts/brevo-sync.ts",
+    "ks-conversions:sync": "tsx --env-file=.env.local scripts/ks-conversions-sync.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.32.1",
