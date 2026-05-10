@@ -482,6 +482,56 @@
 }
 .tanta-finance-root .alloc-total .amount .cents { color: var(--ink-3); font-weight: 600; font-size: 15px; }
 
+/* Per-row status sub-line under the destination */
+.tanta-finance-root .alloc-row .row-status {
+  font-size: 11.5px;
+  margin-top: 4px;
+  letter-spacing: 0.01em;
+  font-weight: 400;
+}
+.tanta-finance-root .alloc-row .row-status strong { font-weight: 600; }
+.tanta-finance-root .alloc-row .row-status-matched   { color: var(--ok); }
+.tanta-finance-root .alloc-row .row-status-pending   { color: var(--warn); }
+.tanta-finance-root .alloc-row .row-status-partial   { color: var(--bad); }
+.tanta-finance-root .alloc-row .row-status-over      { color: var(--capital); }
+.tanta-finance-root .alloc-row .row-status-skipped   { color: var(--ink-3); font-style: italic; }
+.tanta-finance-root .alloc-row .row-status-noBaseline{ color: var(--capital); }
+
+/* Pending check turns gold-bordered to invite the action */
+.tanta-finance-root .alloc-row .check[data-status="pending"]  { border-color: var(--warn); }
+.tanta-finance-root .alloc-row .check[data-status="partial"]  { border-color: var(--bad); }
+
+/* Allocation-progress strip below the total */
+.tanta-finance-root .alloc-progress {
+  margin-top: 14px;
+  padding: 14px 0 4px;
+  border-top: 1px solid var(--rule);
+}
+.tanta-finance-root .alloc-progress .ap-bar {
+  height: 6px;
+  background: var(--soft);
+  border-radius: 9999px;
+  overflow: hidden;
+  margin-bottom: 10px;
+}
+.tanta-finance-root .alloc-progress .ap-fill {
+  height: 100%;
+  background: linear-gradient(90deg, var(--ok) 0%, var(--ok) 100%);
+  border-radius: 9999px;
+  transition: width 240ms ease;
+}
+.tanta-finance-root .alloc-progress .ap-label {
+  font-size: 12px;
+  color: var(--ink-2);
+  letter-spacing: 0.01em;
+}
+.tanta-finance-root .alloc-progress .ap-label strong {
+  color: var(--ink);
+  font-weight: 600;
+  font-family: var(--font-display);
+  font-variant-numeric: tabular-nums;
+}
+
 .tanta-finance-root .alloc-notes {
   margin-top: 22px;
   padding-top: 18px;
@@ -498,6 +548,107 @@
 }
 .tanta-finance-root .alloc-notes .note .marker { color: var(--blue); font-weight: 600; margin-top: 1px; }
 .tanta-finance-root .alloc-notes .note strong { color: var(--ink); font-weight: 600; }
+
+/* ---------- Retrospective panel (last fortnight check) ---------- */
+.tanta-finance-root .retro {
+  background: var(--paper);
+  border-radius: var(--radius-lg);
+  padding: 24px 28px 22px;
+  box-shadow: var(--lift);
+}
+.tanta-finance-root .retro.retro-empty {
+  padding: 22px 28px 20px;
+  color: var(--ink-3);
+  font-size: 12.5px;
+}
+.tanta-finance-root .retro.retro-empty p { margin: 8px 0 0; }
+.tanta-finance-root .retro .retro-head { margin-bottom: 14px; }
+.tanta-finance-root .retro .retro-head h3 {
+  font-family: var(--font-display);
+  font-size: 16px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  margin: 4px 0 10px;
+  color: var(--ink);
+}
+.tanta-finance-root .retro .retro-banner {
+  font-size: 12px;
+  font-weight: 500;
+  letter-spacing: 0.01em;
+  padding: 8px 12px;
+  border-radius: 8px;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+.tanta-finance-root .retro .retro-banner::before {
+  content: "";
+  width: 6px; height: 6px;
+  border-radius: 50%;
+  background: currentColor;
+  display: inline-block;
+}
+.tanta-finance-root .retro .retro-banner.ok   { background: var(--ok-tint);   color: var(--ok); }
+.tanta-finance-root .retro .retro-banner.warn { background: var(--warn-tint); color: var(--warn); }
+.tanta-finance-root .retro .retro-banner.bad  { background: var(--bad-tint);  color: var(--bad); }
+
+.tanta-finance-root .retro-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12.5px;
+  margin-top: 6px;
+}
+.tanta-finance-root .retro-table thead th {
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+  text-align: right;
+  padding: 8px 10px;
+  border-bottom: 1px solid var(--rule);
+}
+.tanta-finance-root .retro-table thead th:first-child { text-align: left; }
+.tanta-finance-root .retro-table tbody td {
+  padding: 10px 10px;
+  text-align: right;
+  color: var(--ink);
+  border-bottom: 1px solid var(--rule);
+  font-family: var(--font-display);
+  font-weight: 500;
+}
+.tanta-finance-root .retro-table tbody td:first-child {
+  text-align: left;
+  font-family: var(--font-sans);
+  font-weight: 500;
+  color: var(--ink);
+}
+.tanta-finance-root .retro-table tbody td .pct {
+  font-size: 11px;
+  color: var(--ink-3);
+  font-weight: 400;
+  margin-left: 2px;
+}
+.tanta-finance-root .retro-table tbody tr:last-child td { border-bottom: 0; }
+.tanta-finance-root .retro-table tfoot td {
+  padding: 12px 10px 4px;
+  text-align: right;
+  font-weight: 600;
+  color: var(--ink);
+  border-top: 2px solid var(--ink);
+  font-family: var(--font-display);
+}
+.tanta-finance-root .retro-table tfoot td:first-child {
+  text-align: left;
+  font-family: var(--font-sans);
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--ink-2);
+}
+.tanta-finance-root .retro-table .delta-ok   { color: var(--ok); }
+.tanta-finance-root .retro-table .delta-warn { color: var(--capital); }
+.tanta-finance-root .retro-table .delta-bad  { color: var(--bad); }
 
 /* ---------- Summary card (FLAT ON CREAM) ---------- */
 .tanta-finance-root .summary {

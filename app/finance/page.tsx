@@ -235,6 +235,7 @@ function Dashboard({ data, onLogout }: { data: DataResponse; onLogout: () => voi
             <div className="split">
               <AllocationsPanel cycle={selectedCycle} />
               <div style={{ display: 'flex', flexDirection: 'column', gap: 28 }}>
+                <RetrospectivePanel cycles={data.cycles} currentDate={selectedCycle.cycleEndDate} />
                 <SummaryPanel cycle={selectedCycle} agg={data.historyAggregates} />
                 <GrowthFortnightly />
               </div>
@@ -482,36 +483,54 @@ function QuarterTabs({
 }
 
 // ============================================================================
-// Allocations panel (the action)
+// Allocations panel — theoretical action artefact
+//
+// Shows the prescribed (49/45/4/2) split as the to-do amounts. Each row's
+// checkbox lights when allocationsActual matches prescribed within tolerance,
+// so as transfers happen the panel turns into a tick-off list.
 // ============================================================================
+type AllocStatus = 'matched' | 'pending' | 'partial' | 'over' | 'skipped' | 'noBaseline';
+function allocStatusOf(prescribed: number, actual: number): AllocStatus {
+  if (prescribed === 0 && actual === 0) return 'skipped';
+  if (prescribed === 0 && actual > 0) return 'noBaseline';
+  if (actual === 0) return 'pending';
+  const ratio = actual / prescribed;
+  if (ratio >= 0.99 && ratio <= 1.01) return 'matched';
+  if (ratio > 1.01) return 'over';
+  return 'partial';
+}
+
 function AllocationsPanel({ cycle }: { cycle: CycleRow }) {
+  const p = cycle.allocationsPrescribed;
   const a = cycle.allocationsActual;
-  const sum = a.opex + a.salaries + a.tax + a.profit;
-  const halfSalaries = a.salaries / 2;
+  const sumP = p.opex + p.salaries + p.tax + p.profit;
+  const sumA = a.opex + a.salaries + a.tax + a.profit;
+  const halfSalaries = p.salaries / 2;
   const isLowCycle = cycle.tradingIncomeCash < 2000;
   const trailPct = cycle.tradingIncomeCash > 0 ? cycle.trailIncome / cycle.tradingIncomeCash : 0;
   const upfrontPct = cycle.tradingIncomeCash > 0 ? cycle.upfrontIncome / cycle.tradingIncomeCash : 0;
+  const completionPct = sumP > 0 ? Math.min(100, Math.round((sumA / sumP) * 100)) : 0;
 
   const rows = [
     {
-      key: 'opex', name: 'Opex', pct: '50%',
+      key: 'opex', name: 'Opex', pct: '49%',
       dest: 'Opex 8.1K',
-      amount: a.opex, checked: true, muted: false,
+      prescribed: p.opex, actual: a.opex,
     },
     {
       key: 'sal', name: 'Drawings', pct: '45% (Salaries TAP)',
       dest: `Chris ${fmtMoney(halfSalaries)}  ·  Anthony ${fmtMoney(halfSalaries)}`,
-      amount: a.salaries, checked: true, muted: false,
+      prescribed: p.salaries, actual: a.salaries,
     },
     {
       key: 'tax', name: 'Tax', pct: '4%',
-      dest: a.tax === 0 ? 'Tax (external) — non-standard fortnight, see flag' : 'Tax (external)',
-      amount: a.tax, checked: false, muted: a.tax === 0,
+      dest: 'Tax (external)',
+      prescribed: p.tax, actual: a.tax,
     },
     {
-      key: 'pft', name: 'Profit', pct: '1%',
+      key: 'pft', name: 'Profit', pct: '2%',
       dest: 'Profit (external)',
-      amount: a.profit, checked: false, muted: false,
+      prescribed: p.profit, actual: a.profit,
     },
   ];
 
@@ -519,7 +538,7 @@ function AllocationsPanel({ cycle }: { cycle: CycleRow }) {
     <div className="alloc">
       <div className="panel-eyebrow">
         <span className="pip" />
-        <span className="eyebrow">Allocations · this fortnight</span>
+        <span className="eyebrow">Allocate · this fortnight</span>
       </div>
 
       <div className="cycle-income">
@@ -537,23 +556,52 @@ function AllocationsPanel({ cycle }: { cycle: CycleRow }) {
         </div>
       </div>
 
-      {rows.map(r => (
-        <div key={r.key} className={`alloc-row ${r.muted ? 'muted' : ''}`}>
-          <button className={`check ${r.checked ? 'checked' : ''}`} aria-label="toggle" />
-          <div>
-            <div className="row-name">
-              {r.name}
-              <span className="row-pct">{r.pct}</span>
+      {rows.map(r => {
+        const s = allocStatusOf(r.prescribed, r.actual);
+        const checked = s === 'matched' || s === 'over';
+        const muted = r.prescribed === 0;
+        return (
+          <div key={r.key} className={`alloc-row ${muted ? 'muted' : ''}`}>
+            <button className={`check ${checked ? 'checked' : ''}`} aria-label="toggle" data-status={s} />
+            <div>
+              <div className="row-name">
+                {r.name}
+                <span className="row-pct">{r.pct}</span>
+              </div>
+              <div className="row-dest">{r.dest}</div>
+              <div className={`row-status row-status-${s}`}>
+                {s === 'matched' && <>moved <strong>{fmtMoney(r.actual)}</strong> · matches prescription</>}
+                {s === 'pending' && <>not yet moved</>}
+                {s === 'partial' && <>moved {fmtMoney(r.actual)} · short by {fmtMoney(r.prescribed - r.actual)}</>}
+                {s === 'over' && <>moved {fmtMoney(r.actual)} · over by {fmtMoney(r.actual - r.prescribed)}</>}
+                {s === 'skipped' && <>skipped this fortnight</>}
+                {s === 'noBaseline' && <>moved {fmtMoney(r.actual)} · no prescribed baseline</>}
+              </div>
             </div>
-            <div className="row-dest">{r.dest}</div>
+            <div className="row-amount tnum"><Money n={r.prescribed} /></div>
           </div>
-          <div className="row-amount tnum"><Money n={r.amount} /></div>
-        </div>
-      ))}
+        );
+      })}
 
       <div className="alloc-total">
-        <div className="label">Allocated this fortnight</div>
-        <div className="amount tnum"><Money n={sum} /></div>
+        <div className="label">To allocate</div>
+        <div className="amount tnum"><Money n={sumP} /></div>
+      </div>
+
+      <div className="alloc-progress">
+        <div className="ap-bar">
+          <div className="ap-fill" style={{ width: completionPct + '%' }} />
+        </div>
+        <div className="ap-label">
+          {sumP === 0
+            ? 'No allocations prescribed'
+            : sumA === 0
+              ? <>Nothing moved yet · <strong>{fmtMoney(sumP)} to action</strong></>
+              : completionPct >= 100
+                ? <>All transfers made · <strong>{fmtMoney(sumA)} of {fmtMoney(sumP)}</strong></>
+                : <>{completionPct}% done · <strong>{fmtMoney(sumP - sumA)}</strong> still to move ({fmtMoney(sumA)} of {fmtMoney(sumP)})</>
+          }
+        </div>
       </div>
 
       <div className="alloc-notes">
@@ -563,15 +611,102 @@ function AllocationsPanel({ cycle }: { cycle: CycleRow }) {
         </div>
         <div className="note">
           <span className="marker">→</span>
-          <span><strong>TAPs (50/45/4/1)</strong> are reviewed quarterly. Per-fortnight drift is expected and not flagged here.</span>
+          <span><strong>TAPs (49/45/4/2)</strong> are reviewed quarterly. Per-fortnight drift is expected and tracked in the retrospective panel.</span>
         </div>
         {isLowCycle && (
           <div className="quiet-note">
             <span className="qn-dot" />
-            <span><strong style={{ color: 'var(--ink)', fontWeight: 600 }}>Non-standard fortnight.</strong> Used a shareholder allocation remainder this fortnight; buffer covered the maths. Logged for the quarterly TAP review — no action this fortnight.</span>
+            <span><strong style={{ color: 'var(--ink)', fontWeight: 600 }}>Non-standard fortnight.</strong> Income is too small for a clean 49/45/4/2 split; the amounts above will be tiny. Logged for the quarterly TAP review.</span>
           </div>
         )}
       </div>
+    </div>
+  );
+}
+
+// ============================================================================
+// Retrospective panel — did last fortnight's transfers match prescription?
+// ============================================================================
+function RetrospectivePanel({ cycles, currentDate }: { cycles: CycleRow[]; currentDate: string }) {
+  // Find the cycle immediately before currentDate across the WHOLE cycles array,
+  // not just the selected quarter (so F1 of a quarter looks back into the prior Q).
+  const sorted = useMemo(
+    () => [...cycles].sort((a, b) => a.cycleEndDate.localeCompare(b.cycleEndDate)),
+    [cycles],
+  );
+  const idx = sorted.findIndex(c => c.cycleEndDate === currentDate);
+  const prev = idx > 0 ? sorted[idx - 1] : null;
+  if (!prev) {
+    return (
+      <div className="retro retro-empty">
+        <div className="eyebrow">Last fortnight · retrospective</div>
+        <p>This is the earliest fortnight in the dataset — nothing to compare against yet.</p>
+      </div>
+    );
+  }
+
+  const p = prev.allocationsPrescribed;
+  const a = prev.allocationsActual;
+  const rows = [
+    { key: 'opex', name: 'Opex',     pct: '49%', prescribed: p.opex,     actual: a.opex },
+    { key: 'sal',  name: 'Drawings', pct: '45%', prescribed: p.salaries, actual: a.salaries },
+    { key: 'tax',  name: 'Tax',      pct: '4%',  prescribed: p.tax,      actual: a.tax },
+    { key: 'pft',  name: 'Profit',   pct: '2%',  prescribed: p.profit,   actual: a.profit },
+  ];
+  const totalP = rows.reduce((s, r) => s + r.prescribed, 0);
+  const totalA = rows.reduce((s, r) => s + r.actual, 0);
+  const allMatched = rows.every(r => allocStatusOf(r.prescribed, r.actual) === 'matched');
+  const anyPending = rows.some(r => allocStatusOf(r.prescribed, r.actual) === 'pending');
+
+  return (
+    <div className="retro">
+      <div className="retro-head">
+        <div className="eyebrow">Last fortnight · retrospective</div>
+        <h3>Fortnight ending {formatLongDate(prev.cycleEndDate)}</h3>
+        <div className={`retro-banner ${allMatched ? 'ok' : anyPending ? 'bad' : 'warn'}`}>
+          {allMatched
+            ? 'All transfers matched prescription'
+            : anyPending
+              ? 'One or more transfers still owed — clear before this fortnight'
+              : 'Mismatched amounts — see deltas below'}
+        </div>
+      </div>
+      <table className="retro-table tnum">
+        <thead>
+          <tr><th>Bucket</th><th>Prescribed</th><th>Moved</th><th>Δ</th></tr>
+        </thead>
+        <tbody>
+          {rows.map(r => {
+            const s = allocStatusOf(r.prescribed, r.actual);
+            const delta = r.actual - r.prescribed;
+            const matched = s === 'matched';
+            const cls = matched ? 'ok' : s === 'over' || s === 'noBaseline' ? 'warn' : 'bad';
+            return (
+              <tr key={r.key}>
+                <td>
+                  {r.name}
+                  <span className="pct"> · {r.pct}</span>
+                </td>
+                <td className="num">{fmtMoney(r.prescribed)}</td>
+                <td className="num">{fmtMoney(r.actual)}</td>
+                <td className={`num delta-${cls}`}>
+                  {matched
+                    ? '✓'
+                    : (delta > 0 ? '+' : '−') + fmtMoney(Math.abs(delta))}
+                </td>
+              </tr>
+            );
+          })}
+        </tbody>
+        <tfoot>
+          <tr>
+            <td>Total</td>
+            <td className="num">{fmtMoney(totalP)}</td>
+            <td className="num">{fmtMoney(totalA)}</td>
+            <td className="num">{totalP === totalA ? '✓' : (totalA > totalP ? '+' : '−') + fmtMoney(Math.abs(totalA - totalP))}</td>
+          </tr>
+        </tfoot>
+      </table>
     </div>
   );
 }
