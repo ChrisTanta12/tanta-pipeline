@@ -6,6 +6,7 @@ import {
   loadOpportunities,
   loadStageHistory,
   loadTargets,
+  loadTrailKiwisavers,
 } from '@/app/lib/sales/db';
 import { computeScorecard, proposeTargets } from '@/app/lib/sales/metrics';
 
@@ -22,18 +23,19 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: 'unauthorized' }, { status: 401 });
   }
   try {
-    const [opps, history, brevo, ksRows, stored] = await Promise.all([
+    const [opps, history, brevo, ksRows, stored, trailKs] = await Promise.all([
       loadOpportunities(),
       loadStageHistory(),
       loadBrevoContacts(),
       loadKsConversions(),
       loadTargets(),
+      loadTrailKiwisavers(),
     ]);
     const targets = Object.keys(stored.current).length > 0
       ? stored.current
       : proposeTargets(opps, brevo, ksRows);
     return NextResponse.json(
-      computeScorecard(opps, history, brevo, ksRows, targets),
+      computeScorecard(opps, history, brevo, ksRows, targets, undefined, trailKs),
       { headers: { 'Cache-Control': 'no-store' } },
     );
   } catch (err: any) {

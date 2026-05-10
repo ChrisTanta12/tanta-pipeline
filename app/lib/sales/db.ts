@@ -106,6 +106,39 @@ export async function loadBrevoContacts(): Promise<BrevoContactRow[]> {
   }));
 }
 
+/**
+ * Loads the cached Trail KiwiSaver records keyed by profileId. Returns
+ * a Map so callers can look up by profileId without scanning. Returns
+ * an empty Map if the table doesn't exist yet (first deploy).
+ */
+export type KiwiSaverRecordRow = {
+  profileId: string;
+  records: any[];        // raw Trail KS records — shape varies, we extract leniently
+  syncedAt: string;
+};
+
+export async function loadTrailKiwisavers(): Promise<Map<string, KiwiSaverRecordRow>> {
+  await sql`
+    CREATE TABLE IF NOT EXISTS trail_kiwisavers (
+      profile_id    TEXT PRIMARY KEY,
+      data          JSONB NOT NULL,
+      synced_at     TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )
+  `;
+  const { rows } = await sql<{ profile_id: string; data: any[]; synced_at: string }>`
+    SELECT profile_id, data, synced_at FROM trail_kiwisavers
+  `;
+  const out = new Map<string, KiwiSaverRecordRow>();
+  for (const r of rows) {
+    out.set(r.profile_id, {
+      profileId: r.profile_id,
+      records: Array.isArray(r.data) ? r.data : [],
+      syncedAt: r.synced_at,
+    });
+  }
+  return out;
+}
+
 export async function loadKsConversions(): Promise<KsConversionRow[]> {
   await sql`
     CREATE TABLE IF NOT EXISTS ks_conversions (

@@ -103,6 +103,20 @@ async function main() {
       console.warn(`[trail-sync]   profile sync failed (continuing): ${err.message}`);
     }
 
+    // KiwiSaver records — only for profiles that appear as the profileId on
+    // a Mortgage Advice opportunity (these are the clients sales surfaces
+    // care about: settled mortgage clients without KS = cross-sell candidates).
+    // Wrapped in its own try/catch so a failure here doesn't fail the whole
+    // sync. Same rationale as the profiles block.
+    let ksCount = 0;
+    try {
+      const mortgageProfileIds = collectMortgageProfileIds(opps);
+      ksCount = await syncKiwiSaverRecords(mortgageProfileIds);
+      console.log(`[trail-sync]   kiwisaver records synced: ${ksCount} profiles`);
+    } catch (err: any) {
+      console.warn(`[trail-sync]   kiwisaver sync failed (continuing): ${err.message}`);
+    }
+
     await sql`
       UPDATE trail_sync_jobs
       SET status='done', finished_at=NOW(), opportunities=${opps.length}, pipelines=${pipelines.length}
@@ -163,6 +177,92 @@ async function fetchAllProfiles(): Promise<any[]> {
   // Profile list endpoint — assumes same pagination/shape as opportunities.
   // Returns the full profile record including profileRank, profileStatus, contacts, etc.
   return fetchPaginated('profiles', '/profiles');
+}
+
+/**
+ * Returns unique profile IDs that appear as `profileId` on a Mortgage
+ * Advice opportunity. Used to scope the KiwiSaver per-profile fetch —
+ * we don't need KS data for non-mortgage profiles (insurance-only,
+ * test rows, archived prospects, etc.).
+ */
+function collectMortgageProfileIds(opps: any[]): string[] {
+  const ids = new Set<string>();
+  for (const o of opps) {
+    if (o.pipelineName !== 'Mortgage Advice') continue;
+    if (typeof o.profileId === 'string' && o.profileId) ids.add(o.profileId);
+  }
+  return Array.from(ids);
+}
+
+/**
+ * Per-profile fetch of GET /api/v1/kiwisavers?profileId={id}. Trail
+ * doesn't expose a bulk KS endpoint; one call per profile is what
+ * we have. We rate-limit to 5 in-flight at once to be polite and
+ * resilient — Trail's gateway has occasionally throttled high-fanout
+ * patterns from our IP.
+ *
+ * On a 200 we cache the records array. On a 404 (no KS for this
+ * profile) we cache an empty array so the read path can distinguish
+ * "we checked, they have nothing" from "we haven't checked yet".
+ *
+ * Returns the count of profiles for which a fresh row was written.
+ */
+async function syncKiwiSaverRecords(profileIds: string[]): Promise<number> {
+  if (profileIds.length === 0) return 0;
+  const CONCURRENCY = 5;
+  let cursor = 0;
+  let written = 0;
+
+  // Ensure the table exists. Migration handles this in steady state, but
+  // a defensive create lets a brand-new env not 500 on the first sync.
+  await sql`
+    CREATE TABLE IF NOT EXISTS trail_kiwisavers (
+      profile_id    TEXT PRIMARY KEY,
+      data          JSONB NOT NULL,
+      synced_at     TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )
+  `;
+
+  async function worker() {
+    while (cursor < profileIds.length) {
+      const i = cursor++;
+      const id = profileIds[i];
+      const url = `${TRAIL_BASE_URL}/kiwisavers?profileId=${encodeURIComponent(id)}`;
+      try {
+        const res = await fetch(url, { headers: { Authorization: TRAIL_API_KEY } });
+        if (!res.ok) {
+          if (res.status === 404) {
+            await sql`
+              INSERT INTO trail_kiwisavers (profile_id, data, synced_at)
+              VALUES (${id}, '[]'::jsonb, NOW())
+              ON CONFLICT (profile_id) DO UPDATE
+                SET data = EXCLUDED.data, synced_at = NOW()
+            `;
+            written++;
+            continue;
+          }
+          // Don't fatal — log and skip. The next sync will retry.
+          const body = await res.text().catch(() => '');
+          console.warn(`[trail-sync]   kiwisavers ${res.status} for profile ${id}: ${body.slice(0, 120)}`);
+          continue;
+        }
+        const body = await res.json();
+        const envelope = body?.data ?? body;
+        const items: any[] = envelope?.items ?? envelope?.records ?? (Array.isArray(envelope) ? envelope : []);
+        await sql`
+          INSERT INTO trail_kiwisavers (profile_id, data, synced_at)
+          VALUES (${id}, ${JSON.stringify(items)}::jsonb, NOW())
+          ON CONFLICT (profile_id) DO UPDATE
+            SET data = EXCLUDED.data, synced_at = NOW()
+        `;
+        written++;
+      } catch (err: any) {
+        console.warn(`[trail-sync]   kiwisavers fetch threw for profile ${id}: ${err.message ?? err}`);
+      }
+    }
+  }
+  await Promise.all(Array.from({ length: CONCURRENCY }, () => worker()));
+  return written;
 }
 
 async function upsertProfiles(profiles: any[]) {

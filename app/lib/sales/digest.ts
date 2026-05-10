@@ -122,12 +122,13 @@ export function renderDigestMarkdown(d: DigestInputs): string {
   if (ksAttach.candidates.length > 0) {
     out.push(`## KiwiSaver cross-sell candidates`);
     out.push('');
-    out.push(`Settled mortgage clients in last ${ksAttach.windowDays} days who aren't in \`ks-conversions.md\`. Add them to the tracker as you book them.`);
+    out.push(`Settled mortgage clients in last ${ksAttach.windowDays} days who aren't in \`ks-conversions.md\`. Current provider sourced from Trail's \`/kiwisavers\` endpoint — "unknown" means we haven't synced one yet.`);
     out.push('');
-    out.push('| Client | Settled |');
-    out.push('|---|---|');
+    out.push('| Client | Current provider | Settled |');
+    out.push('|---|---|---|');
     for (const c of ksAttach.candidates.slice(0, 10)) {
-      out.push(`| ${c.profileName} | ${c.mortgageSettledDate ?? ''} |`);
+      const provider = c.currentProvider ?? 'unknown';
+      out.push(`| ${c.profileName} | ${provider} | ${c.mortgageSettledDate ?? ''} |`);
     }
     out.push('');
   }

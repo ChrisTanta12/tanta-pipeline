@@ -6,6 +6,7 @@ import {
   loadOpportunities,
   loadStageHistory,
   loadTargets,
+  loadTrailKiwisavers,
   saveDigest,
 } from '@/app/lib/sales/db';
 import {
@@ -42,12 +43,13 @@ export async function GET(req: NextRequest) {
   }
 
   try {
-    const [opps, history, brevo, ksRows, stored] = await Promise.all([
+    const [opps, history, brevo, ksRows, stored, trailKs] = await Promise.all([
       loadOpportunities(),
       loadStageHistory(),
       loadBrevoContacts(),
       loadKsConversions(),
       loadTargets(),
+      loadTrailKiwisavers(),
     ]);
     const targets = Object.keys(stored.current).length > 0
       ? stored.current
@@ -59,12 +61,12 @@ export async function GET(req: NextRequest) {
     const cycleStart = new Date(now.getTime() - 6 * 24 * 60 * 60 * 1000);
 
     const inputs = {
-      scorecard: computeScorecard(opps, history, brevo, ksRows, targets, now),
+      scorecard: computeScorecard(opps, history, brevo, ksRows, targets, now, trailKs),
       weekLeads: computeLeads(opps, brevo, 'week', now),
       stale: computeStale(opps, 14),
       expiring: computeExpiringPreApprovals(opps, 30, now),
       sourceMix: computeSourceMix(opps, brevo, 90, ceiling, now),
-      ksAttach: computeKsAttach(opps, ksRows, 90, now),
+      ksAttach: computeKsAttach(opps, ksRows, 90, now, trailKs),
     };
     const markdown = renderDigestMarkdown(inputs);
 

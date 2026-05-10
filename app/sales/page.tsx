@@ -422,6 +422,7 @@ function KsAttachPanel({ ksAttach }: { ksAttach: KsAttachResponse }) {
             <thead>
               <tr className="text-left text-xs text-gray-500 border-b border-gray-200">
                 <th className="py-1">Client</th>
+                <th className="py-1">Current provider</th>
                 <th className="py-1">Settled</th>
               </tr>
             </thead>
@@ -429,6 +430,7 @@ function KsAttachPanel({ ksAttach }: { ksAttach: KsAttachResponse }) {
               {ksAttach.candidates.slice(0, 10).map((c) => (
                 <tr key={c.profileId} className="border-b border-gray-100">
                   <td className="py-1">{c.profileName}</td>
+                  <td className="py-1 text-xs text-gray-700">{c.currentProvider ?? <span className="text-gray-400">unknown</span>}</td>
                   <td className="py-1 text-xs text-gray-600">{c.mortgageSettledDate ?? ''}</td>
                 </tr>
               ))}

@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { isSalesAuthorized } from '@/app/lib/sales/auth';
-import { loadKsConversions, loadOpportunities } from '@/app/lib/sales/db';
+import { loadKsConversions, loadOpportunities, loadTrailKiwisavers } from '@/app/lib/sales/db';
 import { computeKsAttach } from '@/app/lib/sales/metrics';
 
 export const dynamic = 'force-dynamic';
@@ -13,8 +13,12 @@ export async function GET(req: NextRequest) {
   const window = parseInt(searchParams.get('window') ?? '90', 10);
   const days = Number.isFinite(window) && window > 0 ? Math.min(365, window) : 90;
   try {
-    const [opps, ksRows] = await Promise.all([loadOpportunities(), loadKsConversions()]);
-    return NextResponse.json(computeKsAttach(opps, ksRows, days), {
+    const [opps, ksRows, trailKs] = await Promise.all([
+      loadOpportunities(),
+      loadKsConversions(),
+      loadTrailKiwisavers(),
+    ]);
+    return NextResponse.json(computeKsAttach(opps, ksRows, days, undefined, trailKs), {
       headers: { 'Cache-Control': 'no-store' },
     });
   } catch (err: any) {

@@ -333,3 +333,20 @@ CREATE TABLE IF NOT EXISTS sales_digests (
 );
 
 CREATE INDEX IF NOT EXISTS sales_digests_recent ON sales_digests (generated_at DESC);
+
+-- Cache of Trail's KiwiSaver records per profile. Populated by trail-sync
+-- via GET /api/v1/kiwisavers?profileId={id} for each profile that has at
+-- least one Mortgage Advice opportunity. We only need KS data for actual
+-- (or prospective) mortgage clients — full-population sync is wasteful.
+--
+-- `data` is the raw response array (one element per KS holding the
+-- profile has). Sales surfaces pull `currentProvider` out of this lazily;
+-- keeping the full body lets us surface fund / balance / contribution
+-- rate without another sync change.
+CREATE TABLE IF NOT EXISTS trail_kiwisavers (
+  profile_id    TEXT PRIMARY KEY,
+  data          JSONB NOT NULL,                                  -- array of KS records returned by Trail
+  synced_at     TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS trail_kiwisavers_synced ON trail_kiwisavers (synced_at DESC);
