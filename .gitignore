@@ -5,3 +5,9 @@ node_modules
 .vercel
 .env*.local
 scripts/swap-rates.log
+
+# Generated locally — never commit business data to a public repo
+tanta_finance_snapshot.json
+
+# TypeScript build cache
+*.tsbuildinfo

@@ -189,6 +189,73 @@ const CYCLES: Cycle[] = [
     notes: '$721.59 GST topup paid to IRD. $5,319 retained as buffer (used next fortnight).',
   },
   {
+    cycleEndDate: '2026-04-22',
+    cycleStartDate: '2026-04-09',
+    quarter: '2026Q2',
+    tradingIncomeCash: 3662.26,
+    tradingIncomeEarned: 3662.26,
+    trailIncome: 833.64,
+    upfrontIncome: 2828.62,
+    incomeBySource: {
+      KAN: { trail: 130.87 },
+      Generate: { trail: 116.28 },
+      Milford: { trail: 518.49 },
+      AJG: { upfront: 2828.62 },
+      Pathfinder: { trail: 68.00 },
+    },
+    allocationsPrescribed: { opex: 1794.51, salaries: 1648.02, tax: 146.49, profit: 73.25 },
+    allocationsActual: { opex: 7827.26, salaries: 0, tax: 0, profit: 0 },
+    trueOpex: 4173.03,
+    opexByCategory: {
+      Rent: 3092.40, SaaS: 521.14, Telco: 294.71, Utilities: 147.04, Meals: 117.74,
+    },
+    drawingsChris: 5500.00,
+    drawingsAnthony: 5500.00,
+    accountBalancesEnd: {},
+    flags: [
+      { severity: 'warn', title: 'No live transfers — caught up retrospectively on 06/05', body: 'Chris and Anthony were away on 22/04, so no Profit First allocation transfers were made live. On 06/05 a single $7,827.26 sweep to Opex 8.1K was booked under "OPEX Full alloc 22 Apr" as the retroactive catch-up. No Salaries / Tax / Profit split was applied — the 22/04 income was treated as a lump Opex top-up rather than a clean 49/45/4/2 allocation.' },
+      { severity: 'warn', title: 'Drawings well above prescribed', body: 'Drawings of $5,500 each ($11,000 total) on 22/04 vs prescribed $1,648 (45% of $3,662 income). Buffer cash from prior fortnights covered the maths.' },
+      { severity: 'warn', title: 'Capital pass-through routed through Opex 8.1K', body: '$30,004.28 in from MR A P BROWNE ("Contractor") on 09/04 and $26,931.33 out to The Mortgage Man ("Wash Up") on 15/04 landed in Opex 8.1K rather than Tanta Income. Net +$3,072.95. Captured as capital movements; excluded from trading income and Opex variance.' },
+      { severity: 'warn', title: 'One-off $2,600 transfer to Payroll 8K', body: 'Payroll 8K is meant to be dormant under current drawings structure. The 22/04 transfer of $2,600 to it is unusual — confirm purpose at next catch-up.' },
+    ],
+    notes: 'Trail-heavy fortnight (only AJG $2,828.62 was upfront). No live PF transfers — retroactive Opex sweep of $7,827.26 booked on 06/05 (no Salaries / Tax / Profit split). Drawings of $5,500 each happened live on 22/04 from Opex 8.1K.',
+  },
+  {
+    cycleEndDate: '2026-05-06',
+    cycleStartDate: '2026-04-23',
+    quarter: '2026Q2',
+    tradingIncomeCash: 27917.84,
+    tradingIncomeEarned: 27917.84,
+    trailIncome: 13905.97,
+    upfrontIncome: 14011.87,
+    incomeBySource: {
+      KAN: { upfront: 11007.50, trail: 7508.59 },
+      SHL: { upfront: 2870.43, trail: 2078.59 },
+      Booster: { trail: 4318.79 },
+      Chubb: { upfront: 133.94 },
+    },
+    allocationsPrescribed: { opex: 13679.74, salaries: 12563.03, tax: 1116.71, profit: 558.36 },
+    allocationsActual: { opex: 13679.74, salaries: 12563.03, tax: 1116.71, profit: 558.36 },
+    trueOpex: 4369.74,
+    opexByCategory: {
+      Trail: 1725.00, SaaS: 2118.83, Utilities: 189.47,
+      Meals: 302.00, BankFees: 34.44,
+    },
+    drawingsChris: 5500.00,
+    drawingsAnthony: 5500.00,
+    accountBalancesEnd: {},
+    flags: [
+      { severity: 'warn', title: 'Tax 4% not physically moved — earmarked for GST bill', body: '$1,116.71 Tax allocation is logged here as if it moved, but in practice the cash stayed in Tanta Income to fund the upcoming GST bill directly (avoids a Tax (external) → IRD round-trip). Allocation is economically real; the bank statement will not show a Tax (external) transfer for 06/05.' },
+      { severity: 'ok', title: '06/05 catch-up transfers landed', body: 'Opex $13,679.74 (49%), Salaries $12,563.03 (45%), Profit $558.36 (2%) all moved on 06/05. Drawings of $5,000 each (+$500 expenses each) followed from Opex 8.1K the same day.' },
+      { severity: 'ok', title: 'KAN May export reconciled', body: 'Three May KAN invoices (64053/64456/64633, $7,508.59) confirmed 100% trail per Commission_Export 6_05_2026.xlsx. All four KAN deposits now reconcile exactly to invoice-level data.' },
+      { severity: 'warn', title: 'SHL May email gap', body: '01/05 SHL deposit $4,949.02 not yet split trail/upfront — pull the May ASBAIMS@asb.co.nz CSVs.' },
+      { severity: 'warn', title: '22 April catch-up done as Opex sweep', body: 'The missed 22/04 fortnight was caught up on 06/05 with a single $7,827.26 transfer to Opex 8.1K labelled "OPEX Full alloc 22 Apr" — Salaries / Tax / Profit not split out for that fortnight.' },
+      { severity: 'warn', title: 'KAN invoice 64861 ($2,465) settled 06/05 — not in catch-up base', body: 'A new KAN deposit of $2,465.00 (invoice 64861) landed on 06/05 itself. The 06/05 catch-up transfers were sized to $27,917.84 (excluding it). The $2,465 is sitting in Tanta Income and should roll into the next fortnight\'s allocation.' },
+      { severity: 'ok', title: 'No capital movements this fortnight', body: 'Cleanest fortnight since launch — no Halo, no Browne pass-through, no IRD inflows/refunds.' },
+    ],
+    notes: 'Trading income $27,917.84 — strongest fortnight of 2026 to date, driven by two ANZ upfronts on 30/04 totalling $11,007.50 (Gillott $640k + Apii $655k, both Anthony\'s). KAN trail/upfront split confirmed via Commission_Export 6_05_2026.xlsx: $11,007.50 upfront + $7,508.59 trail. SHL split still provisional (42/58 baseline applied to $4,949.02) until May ASBAIMS CSVs are pulled. Allocations executed via 06/05 catch-up transfers; Tax 4% not physically moved (earmarked for GST). Drawings $5,000 each + $500 expenses each = $5,500 each total.',
+  },
+  {
     cycleEndDate: '2026-04-08',
     cycleStartDate: '2026-03-26',
     quarter: '2026Q2',
@@ -332,6 +399,24 @@ const CAPITAL = [
     payeeOrPayer: 'Opex 8.1K → New Hire 30K',
     notes: 'Only reserve top-up in Q1. Authorised to be more frequent (~$1.5k/fortnight from Opex headroom).',
   },
+  {
+    movementDate: '2026-04-09',
+    cycleEndDate: '2026-04-22' as string | null,
+    kind: 'contractor_passthrough',
+    amount: 30004.28,
+    description: 'Contractor pass-through inflow (landed in Opex 8.1K, not Tanta Income)',
+    payeeOrPayer: 'MR A P BROWNE',
+    notes: 'Paired with Mortgage Man wash-up outflow on 15/04. Net +$3,072.95.',
+  },
+  {
+    movementDate: '2026-04-15',
+    cycleEndDate: '2026-04-22' as string | null,
+    kind: 'contractor_passthrough',
+    amount: -26931.33,
+    description: 'Mortgage Man wash-up outflow (from Opex 8.1K)',
+    payeeOrPayer: 'The Mortgage Man',
+    notes: 'Paired with MR A P BROWNE inflow on 09/04. Net pair +$3,072.95.',
+  },
 ];
 
 async function main() {
@@ -396,7 +481,7 @@ async function main() {
 
   console.log('Seeding finance_capital_movements...');
   // Clear and re-insert (small list, idempotent)
-  await sql`DELETE FROM finance_capital_movements WHERE movement_date >= '2026-01-01' AND movement_date < '2026-04-01'`;
+  await sql`DELETE FROM finance_capital_movements WHERE movement_date >= '2026-01-01' AND movement_date < '2026-06-01'`;
   for (const m of CAPITAL) {
     await sql`
       INSERT INTO finance_capital_movements (
