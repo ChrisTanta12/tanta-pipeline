@@ -7,6 +7,7 @@ import {
   loadOpportunities,
   loadStageHistory,
   loadTargets,
+  loadTrailKiwisavers,
 } from '@/app/lib/sales/db';
 import {
   computeExpiringPreApprovals,
@@ -34,12 +35,13 @@ export async function GET(req: NextRequest) {
   const { searchParams } = new URL(req.url);
   const format = (searchParams.get('format') ?? 'markdown').toLowerCase();
   try {
-    const [opps, history, brevo, ksRows, stored] = await Promise.all([
+    const [opps, history, brevo, ksRows, stored, trailKs] = await Promise.all([
       loadOpportunities(),
       loadStageHistory(),
       loadBrevoContacts(),
       loadKsConversions(),
       loadTargets(),
+      loadTrailKiwisavers(),
     ]);
     const targets = Object.keys(stored.current).length > 0
       ? stored.current
@@ -47,12 +49,12 @@ export async function GET(req: NextRequest) {
     const ceiling = targets.sourceConcentrationCeilingPct ?? 70;
 
     const inputs = {
-      scorecard: computeScorecard(opps, history, brevo, ksRows, targets),
+      scorecard: computeScorecard(opps, history, brevo, ksRows, targets, undefined, trailKs),
       weekLeads: computeLeads(opps, brevo, 'week'),
       stale: computeStale(opps, 14),
       expiring: computeExpiringPreApprovals(opps, 30),
       sourceMix: computeSourceMix(opps, brevo, 90, ceiling),
-      ksAttach: computeKsAttach(opps, ksRows, 90),
+      ksAttach: computeKsAttach(opps, ksRows, 90, undefined, trailKs),
     };
     const md = renderDigestMarkdown(inputs);
 

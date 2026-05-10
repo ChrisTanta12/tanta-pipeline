@@ -131,6 +131,17 @@ export type KsConversionRow = {
   ksSigned: string;
 };
 
+/**
+ * Trail's `/kiwisavers?profileId={id}` returns an array of KS records
+ * per profile. The exact shape isn't documented; extractKsProvider()
+ * below tries a handful of likely field names so we work whether the
+ * provider is at the top level, nested under a `provider` object, or
+ * stored as `schemeName` / `fundName`. Records that don't match any
+ * known shape return null and the candidate is shown as "(unknown)"
+ * — never an error.
+ */
+export type TrailKiwiSaverInput = Map<string, { records: any[] }>;
+
 // =============================================================================
 // Helpers
 // =============================================================================
@@ -495,6 +506,7 @@ export function computeKsAttach(
   ksRows: KsConversionRow[],
   windowDaysIn: number = 90,
   anchor: Date = new Date(),
+  trailKiwisavers: TrailKiwiSaverInput = new Map(),
 ): KsAttachResponse {
   const fromMs = anchor.getTime() - windowDaysIn * DAY_MS;
   const toMs = anchor.getTime();
@@ -516,11 +528,13 @@ export function computeKsAttach(
     const pid = String(opp.data.profileId ?? '');
     if (!pid) continue;
     if (!ksByProfile.has(pid)) {
+      const ksCache = trailKiwisavers.get(pid);
       candidates.push({
         profileId: pid,
         profileName: opp.data.profileName ?? '(unknown)',
         email: null,
         mortgageSettledDate: settledStr ? settledStr.slice(0, 10) : null,
+        currentProvider: ksCache ? extractKsProvider(ksCache.records) : null,
       });
     }
   }
@@ -618,6 +632,61 @@ function median(arr: number[]): number {
   return s.length % 2 ? s[m] : Math.round((s[m - 1] + s[m]) / 2);
 }
 
+/**
+ * Best-effort extract of "current KiwiSaver provider" from Trail's
+ * `/kiwisavers?profileId=...` response. The shape isn't documented,
+ * so we try several common field names and prefer the most recently
+ * modified record when the profile holds multiple. Returns null when
+ * no usable signal is found — caller should render this as "(unknown)".
+ *
+ * If/when we see real responses and can lock down a single field path,
+ * this can be tightened. Until then, defensive parsing is the safest
+ * way to ship.
+ */
+export function extractKsProvider(records: unknown): string | null {
+  if (!Array.isArray(records) || records.length === 0) return null;
+  // Sort by any timestamp-shaped field, descending. Falls back to original order.
+  const sorted = records.slice().sort((a, b) => tsKey(b) - tsKey(a));
+  for (const r of sorted) {
+    const v = pickProvider(r);
+    if (v) return v;
+  }
+  return null;
+}
+
+function tsKey(r: any): number {
+  for (const k of ['modifiedTimestamp', 'updatedAt', 'createdTimestamp', 'createdAt', 'startDate']) {
+    const v = r?.[k];
+    if (typeof v === 'string') {
+      const t = Date.parse(v);
+      if (Number.isFinite(t)) return t;
+    }
+  }
+  return 0;
+}
+
+function pickProvider(r: any): string | null {
+  if (!r || typeof r !== 'object') return null;
+  // Direct top-level fields — try the most common naming patterns.
+  const candidateKeys = [
+    'currentProvider', 'provider', 'providerName', 'providerCompany',
+    'schemeProvider', 'schemeName', 'scheme', 'fundName', 'fund',
+    'kiwiSaverProvider', 'kiwisaverProvider',
+  ];
+  for (const k of candidateKeys) {
+    const v = r[k];
+    if (typeof v === 'string' && v.trim().length > 0) return v.trim();
+    // Nested object case e.g. provider.name
+    if (v && typeof v === 'object') {
+      for (const sub of ['name', 'displayName', 'label', 'company', 'companyName']) {
+        const vs = (v as any)[sub];
+        if (typeof vs === 'string' && vs.trim().length > 0) return vs.trim();
+      }
+    }
+  }
+  return null;
+}
+
 // =============================================================================
 // Scorecard (single object roll-up used by skill + digest)
 // =============================================================================
@@ -629,6 +698,7 @@ export function computeScorecard(
   ksRows: KsConversionRow[],
   targets: SalesTargets,
   anchor: Date = new Date(),
+  trailKiwisavers: TrailKiwiSaverInput = new Map(),
 ): ScorecardResponse {
   const [winStart, winEnd] = windowRange('fortnight', anchor);
   const fortnightLeads = computeLeads(opps, brevoContacts, 'fortnight', anchor);
@@ -636,7 +706,7 @@ export function computeScorecard(
   const stale = computeStale(opps, 14);
   const expiring = computeExpiringPreApprovals(opps, 30, anchor);
   const sourceMix = computeSourceMix(opps, brevoContacts, 90, targets.sourceConcentrationCeilingPct ?? 70, anchor);
-  const ksAttach = computeKsAttach(opps, ksRows, 90, anchor);
+  const ksAttach = computeKsAttach(opps, ksRows, 90, anchor, trailKiwisavers);
   const fundsFromMs = anchor.getTime() - 14 * DAY_MS;
 
   let settlementsThisFortnight = 0;

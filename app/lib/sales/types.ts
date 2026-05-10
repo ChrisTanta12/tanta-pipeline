@@ -103,6 +103,13 @@ export type KsCrossSellCandidate = {
   profileName: string;
   email: string | null;
   mortgageSettledDate: string | null;
+  /**
+   * Best-guess current KiwiSaver provider, sourced from the per-profile
+   * Trail `/kiwisavers?profileId=...` cache. `null` when:
+   *   - the cache hasn't been populated yet for this profile, or
+   *   - the profile has no KiwiSaver records in Trail.
+   */
+  currentProvider: string | null;
 };
 
 export type KsAttachResponse = {
