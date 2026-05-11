@@ -1,0 +1,332 @@
+/* =========================================================
+   /finance/ingest — drop zone + preview card
+   Layers on top of app/finance/styles.css (.tanta-finance-root)
+   ========================================================= */
+
+.tanta-finance-root .ingest-page { padding: 32px 40px 80px; }
+
+.tanta-finance-root .ingest-section { margin-bottom: 32px; }
+
+/* ---------- Drop zone ---------- */
+.tanta-finance-root .drop-zone {
+  border: 2px dashed var(--rule);
+  border-radius: var(--radius-lg);
+  background: var(--paper);
+  padding: 32px;
+  cursor: pointer;
+  transition: border-color 120ms ease, background-color 120ms ease;
+  min-height: 140px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.tanta-finance-root .drop-zone:hover { border-color: var(--blue); background: var(--soft); }
+.tanta-finance-root .drop-zone.has-files {
+  cursor: default;
+  padding: 18px 22px;
+  align-items: stretch;
+  border-style: solid;
+  border-color: var(--rule);
+}
+.tanta-finance-root .drop-zone.has-files:hover { border-color: var(--rule); background: var(--paper); }
+
+.tanta-finance-root .dz-empty { text-align: center; color: var(--ink-3); }
+.tanta-finance-root .dz-icon {
+  font-family: var(--font-display);
+  font-size: 28px;
+  font-weight: 700;
+  color: var(--blue);
+  margin-bottom: 8px;
+}
+.tanta-finance-root .dz-title {
+  font-family: var(--font-display);
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--ink);
+}
+.tanta-finance-root .dz-sub { font-size: 12px; margin-top: 4px; }
+
+.tanta-finance-root .dz-list { list-style: none; padding: 0; margin: 0; display: grid; gap: 8px; width: 100%; }
+.tanta-finance-root .dz-file {
+  display: grid;
+  grid-template-columns: 1fr auto auto;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 12px;
+  background: var(--soft);
+  border-radius: var(--radius-sm);
+  font-size: 13px;
+}
+.tanta-finance-root .dz-file-name { color: var(--ink); font-weight: 500; }
+.tanta-finance-root .dz-file-size { color: var(--ink-3); font-size: 11.5px; font-variant-numeric: tabular-nums; }
+.tanta-finance-root .dz-file-remove {
+  background: none;
+  border: 0;
+  font-size: 18px;
+  line-height: 1;
+  color: var(--ink-3);
+  cursor: pointer;
+  padding: 2px 6px;
+  border-radius: 4px;
+}
+.tanta-finance-root .dz-file-remove:hover { background: var(--bad-tint); color: var(--bad); }
+
+/* ---------- Window override inputs ---------- */
+.tanta-finance-root .window-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+  background: var(--paper);
+  border-radius: var(--radius-lg);
+  padding: 18px 22px;
+  box-shadow: var(--lift);
+}
+.tanta-finance-root .window-row label {
+  display: grid;
+  gap: 6px;
+  font-size: 11px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--ink-2);
+  font-weight: 500;
+}
+.tanta-finance-root .window-row input {
+  padding: 10px 12px;
+  border-radius: 8px;
+  border: 1px solid var(--rule);
+  font-family: var(--font-sans);
+  font-size: 14px;
+  background: var(--paper);
+  color: var(--ink);
+}
+.tanta-finance-root .window-row input:focus {
+  outline: none;
+  border-color: var(--navy);
+  box-shadow: 0 0 0 3px rgba(29, 53, 87, 0.12);
+}
+
+/* ---------- Action buttons ---------- */
+.tanta-finance-root .ingest-actions {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+}
+.tanta-finance-root .btn {
+  appearance: none;
+  border: 0;
+  border-radius: 9999px;
+  font-family: var(--font-display);
+  font-weight: 600;
+  font-size: 13px;
+  letter-spacing: 0.01em;
+  padding: 10px 22px;
+  cursor: pointer;
+  transition: background-color 120ms ease, color 120ms ease;
+}
+.tanta-finance-root .btn.primary {
+  background: var(--navy);
+  color: #fff;
+}
+.tanta-finance-root .btn.primary:hover:not(:disabled) { background: #16273f; }
+.tanta-finance-root .btn.primary:disabled { opacity: 0.4; cursor: not-allowed; }
+.tanta-finance-root .btn.ghost {
+  background: transparent;
+  color: var(--ink-2);
+  border: 1px solid var(--rule);
+}
+.tanta-finance-root .btn.ghost:hover { background: var(--soft); color: var(--navy); }
+
+.tanta-finance-root .ingest-error {
+  margin-top: 12px;
+  padding: 10px 14px;
+  background: var(--bad-tint);
+  color: var(--bad);
+  border-radius: 8px;
+  font-size: 13px;
+}
+
+/* ---------- Preview card ---------- */
+.tanta-finance-root .preview-card {
+  background: var(--paper);
+  border-radius: var(--radius-lg);
+  padding: 28px 32px;
+  box-shadow: var(--lift);
+}
+.tanta-finance-root .preview-card .section-head { margin-bottom: 18px; }
+.tanta-finance-root .preview-card .section-head h2 { font-size: 22px; }
+
+.tanta-finance-root .preview-files {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 24px;
+  padding-bottom: 18px;
+  border-bottom: 1px solid var(--rule);
+}
+
+.tanta-finance-root .preview-block {
+  padding: 18px 0;
+  border-bottom: 1px solid var(--rule);
+}
+.tanta-finance-root .preview-block:last-of-type { border-bottom: 0; }
+
+.tanta-finance-root .preview-block .pb-eyebrow {
+  font-family: var(--font-display);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--ink-2);
+  margin-bottom: 8px;
+}
+.tanta-finance-root .preview-block .pb-eyebrow.capital { color: var(--capital); }
+
+.tanta-finance-root .preview-block .pb-big {
+  font-family: var(--font-display);
+  font-size: 32px;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  color: var(--ink);
+  line-height: 1;
+  margin: 4px 0 10px;
+}
+.tanta-finance-root .preview-block .pb-pills { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 10px; }
+
+.tanta-finance-root .preview-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+  margin-top: 12px;
+}
+.tanta-finance-root .preview-table thead th {
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--ink-2);
+  text-align: right;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--rule);
+}
+.tanta-finance-root .preview-table thead th:first-child { text-align: left; }
+.tanta-finance-root .preview-table tbody td {
+  padding: 10px 12px;
+  text-align: right;
+  color: var(--ink);
+  border-bottom: 1px solid var(--rule);
+}
+.tanta-finance-root .preview-table tbody td:first-child { text-align: left; }
+.tanta-finance-root .preview-table tbody tr:last-child td { border-bottom: 0; }
+.tanta-finance-root .preview-table .num {
+  font-family: var(--font-display);
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+}
+.tanta-finance-root .preview-table tfoot td {
+  padding: 12px 12px 4px;
+  border-top: 2px solid var(--ink);
+  font-weight: 600;
+  text-align: right;
+}
+.tanta-finance-root .preview-table tfoot td:first-child { text-align: left; }
+
+.tanta-finance-root .preview-cat-list {
+  list-style: none;
+  padding: 0;
+  margin: 12px 0 0;
+  display: grid;
+  gap: 6px;
+}
+.tanta-finance-root .preview-cat-list li {
+  display: flex;
+  justify-content: space-between;
+  font-size: 12.5px;
+  color: var(--ink-2);
+}
+.tanta-finance-root .preview-cat-list li span:last-child {
+  color: var(--ink);
+  font-family: var(--font-display);
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+}
+
+.tanta-finance-root .pb-rows { display: grid; gap: 8px; font-size: 13px; }
+.tanta-finance-root .pb-rows > div {
+  display: flex; justify-content: space-between;
+  padding: 8px 0;
+  border-bottom: 1px solid var(--rule);
+}
+.tanta-finance-root .pb-rows > div:last-child { border-bottom: 0; }
+.tanta-finance-root .pb-rows .tnum {
+  font-family: var(--font-display);
+  font-weight: 600;
+}
+
+/* ---------- Capital pass-throughs ---------- */
+.tanta-finance-root .preview-capital { background: var(--capital-tint); padding: 18px 20px; border-radius: 10px; border-bottom: 0; }
+.tanta-finance-root .preview-capital-list { list-style: none; padding: 0; margin: 12px 0 0; display: grid; gap: 6px; }
+.tanta-finance-root .preview-capital-list li {
+  display: grid;
+  grid-template-columns: 90px 1fr auto auto;
+  gap: 12px;
+  align-items: baseline;
+  font-size: 13px;
+  padding: 8px 0;
+  border-bottom: 1px solid rgba(138, 111, 168, 0.15);
+}
+.tanta-finance-root .preview-capital-list li:last-child { border-bottom: 0; }
+.tanta-finance-root .cap-date { color: var(--ink-2); font-variant-numeric: tabular-nums; font-size: 12px; }
+.tanta-finance-root .cap-payee { color: var(--ink); font-weight: 500; }
+.tanta-finance-root .cap-reason { color: var(--capital); font-size: 12px; }
+.tanta-finance-root .cap-amount {
+  font-family: var(--font-display);
+  font-weight: 600;
+  color: var(--capital);
+}
+.tanta-finance-root .cap-amount.neg { color: var(--bad); }
+.tanta-finance-root .capital-note { font-size: 11.5px; color: var(--ink-2); margin: 10px 0 0; font-style: italic; }
+
+/* ---------- Flags ---------- */
+.tanta-finance-root .preview-flags { list-style: none; padding: 0; margin: 12px 0 0; display: grid; gap: 8px; }
+.tanta-finance-root .preview-flags .flag {
+  padding: 10px 14px;
+  border-radius: 8px;
+  font-size: 12.5px;
+  display: grid;
+  gap: 4px;
+}
+.tanta-finance-root .preview-flags .flag strong { color: var(--ink); font-weight: 600; }
+.tanta-finance-root .preview-flags .flag-ok   { background: var(--ok-tint);   color: var(--ok); }
+.tanta-finance-root .preview-flags .flag-warn { background: var(--warn-tint); color: var(--warn); }
+.tanta-finance-root .preview-flags .flag-bad  { background: var(--bad-tint);  color: var(--bad); }
+.tanta-finance-root .preview-flags .flag span { color: inherit; }
+
+/* ---------- Success state ---------- */
+.tanta-finance-root .ingest-success {
+  background: var(--ok-tint);
+  border-radius: var(--radius-lg);
+  padding: 24px 28px;
+  margin-top: 16px;
+}
+.tanta-finance-root .ingest-success .ok-tag {
+  display: inline-block;
+  background: var(--ok);
+  color: #fff;
+  font-family: var(--font-display);
+  font-weight: 700;
+  font-size: 11px;
+  letter-spacing: 0.1em;
+  padding: 4px 10px;
+  border-radius: 9999px;
+  text-transform: uppercase;
+}
+.tanta-finance-root .ingest-success h3 {
+  font-family: var(--font-display);
+  font-size: 18px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  margin: 12px 0 6px;
+  color: var(--ok);
+}
+.tanta-finance-root .ingest-success p { font-size: 13px; color: var(--ink-2); margin: 4px 0 0; }
+.tanta-finance-root .ingest-success a { color: var(--navy); font-weight: 600; }
