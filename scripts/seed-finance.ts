@@ -275,19 +275,19 @@ const CYCLES: Cycle[] = [
     },
     allocationsPrescribed: { opex: 11140.90, salaries: 10231.44, tax: 909.46, profit: 454.73 },
     allocationsActual: { opex: 11368.27, salaries: 10231.44, tax: 909.46, profit: 227.37 },
-    trueOpex: 4217.27,
+    trueOpex: 4367.27,
     opexByCategory: {
       Trail: 1725.00, GoCardlessOther: 397.95, AffordX: 51.52,
       SaaS: 768.92, Marketing: 206.94, BankFees: 5.00, Vehicle: 54.00,
-      DirectorExpenseFloat: 1000.00,
+      DirectorExpenseFloat: 1150.00,
     },
     drawingsChris: 5637.00,
-    drawingsAnthony: 5787.00,
+    drawingsAnthony: 5637.00,
     accountBalancesEnd: {},
     flags: [
       { severity: 'warn', title: 'Q2 first fortnight — quarterly TAP review pending', body: 'First fortnight of Q2 2026. The quarterly TAP review (alongside Q1 Profit Distribution) should be on the 22/04 catch-up agenda.' },
     ],
-    notes: 'First fortnight of Q2 2026. Drawings $5,637 each (loan-repayments). Anthony also received a $150 gift on 02/04 bundled into his drawings. $500 each to Chris/Ant Expenses cards counted as opex (director expense float).',
+    notes: 'First fortnight of Q2 2026. Drawings $5,637 each (loan-repayments). DirectorExpenseFloat: $500 Chris + $500 Anthony + $150 client gift on 02/04 (via Ant Expenses card) = $1,150 opex.',
   },
   {
     cycleEndDate: '2026-03-25',
