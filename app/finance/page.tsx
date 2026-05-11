@@ -321,6 +321,7 @@ function AppHeader({
       <div className="meta">
         Latest fortnight <strong>{formatLongDate(latestCycle)}</strong> · <span>{quarter} 2026</span>
       </div>
+      <a href="/finance/ingest" className="logout" style={{ marginRight: 4 }}>+ Ingest fortnight</a>
       <button onClick={onLogout} className="logout">Sign out</button>
     </header>
   );
