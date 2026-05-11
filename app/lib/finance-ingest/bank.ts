@@ -99,8 +99,11 @@ function catOpex(payee: string, particulars: string, amt: number): string {
   }
   if (p.includes('chris personal')) return 'DRAW: Chris loan-repay';
   if (p.includes('ant personal')) return 'DRAW: Anthony loan-repay';
-  if (p.includes('chris expenses')) return 'DRAW: Chris Expenses sweep';
-  if (p.includes('ant expenses')) return 'DRAW: Ant Expenses sweep';
+  // Top-ups to Chris/Anthony's business-expense float cards are opex, not
+  // drawings. Both flow into the DirectorExpenseFloat bucket (the parens get
+  // stripped when compose.ts extracts the category key).
+  if (p.includes('chris expenses')) return 'OPEX: DirectorExpenseFloat (Chris)';
+  if (p.includes('ant expenses')) return 'OPEX: DirectorExpenseFloat (Anthony)';
   if (p.includes('payroll')) return 'TRANSFER: -> Payroll 8K';
   if (p.includes('expenses cc')) return 'TRANSFER: -> CC top-up';
   if (p.includes('new hire')) return 'TRANSFER: -> Strategic reserve';

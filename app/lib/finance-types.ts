@@ -33,7 +33,9 @@ export type OpexByCategory = Partial<Record<
   | 'Rent' | 'PI insurance' | 'Trail (CRM)' | 'GoCardless other'
   | 'GST / IRD' | 'Bookkeeping' | 'Utilities' | 'SaaS'
   | 'Marketing' | 'Telco' | 'Vehicle' | 'Equipment'
-  | 'Networking / events' | 'Bo Li' | 'Other'
+  | 'Networking / events' | 'Bo Li'
+  | 'DirectorExpenseFloat'    // $500-ish top-ups to Chris/Ant Expenses cards (opex, not drawings)
+  | 'Other'
   , number
 >>;
 
