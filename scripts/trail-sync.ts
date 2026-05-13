@@ -197,21 +197,32 @@ function collectMortgageProfileIds(opps: any[]): string[] {
 /**
  * Per-profile fetch of GET /api/v1/kiwisavers?profileId={id}. Trail
  * doesn't expose a bulk KS endpoint; one call per profile is what
- * we have. We rate-limit to 5 in-flight at once to be polite and
- * resilient — Trail's gateway has occasionally throttled high-fanout
- * patterns from our IP.
+ * we have.
  *
- * On a 200 we cache the records array. On a 404 (no KS for this
- * profile) we cache an empty array so the read path can distinguish
- * "we checked, they have nothing" from "we haven't checked yet".
+ * Throttling: Trail allows 100–300 calls/min sustained, 600/min burst
+ * (per Claude Home Base/Trail Integration/trail-api-docs.md). An earlier
+ * version of this function ran 5 in-flight workers with no inter-request
+ * delay and got 429'd halfway through the run, leaving most settled
+ * mortgage clients without KS data cached. We now run sequentially with
+ * an inter-request delay and parse the Retry-After / body for accurate
+ * back-off when 429 does fire.
+ *
+ * On 200 we cache the records array. On 404 we cache an empty array so
+ * the read path can distinguish "we checked, they have nothing" from
+ * "we haven't checked yet". On 429 we sleep and retry up to MAX_RETRIES
+ * times.
  *
  * Returns the count of profiles for which a fresh row was written.
  */
 async function syncKiwiSaverRecords(profileIds: string[]): Promise<number> {
   if (profileIds.length === 0) return 0;
-  const CONCURRENCY = 5;
-  let cursor = 0;
+  // 1 req every 500ms ≈ 120/min — well under Trail's 300/min sustained
+  // limit, leaves headroom for the rest of the sync (opportunities,
+  // profiles) to share the per-org budget.
+  const REQUEST_INTERVAL_MS = 500;
+  const MAX_RETRIES = 3;
   let written = 0;
+  let rateLimitedThenRecovered = 0;
 
   // Ensure the table exists. Migration handles this in steady state, but
   // a defensive create lets a brand-new env not 500 on the first sync.
@@ -223,28 +234,40 @@ async function syncKiwiSaverRecords(profileIds: string[]): Promise<number> {
     )
   `;
 
-  async function worker() {
-    while (cursor < profileIds.length) {
-      const i = cursor++;
-      const id = profileIds[i];
-      const url = `${TRAIL_BASE_URL}/kiwisavers?profileId=${encodeURIComponent(id)}`;
+  for (const id of profileIds) {
+    const url = `${TRAIL_BASE_URL}/kiwisavers?profileId=${encodeURIComponent(id)}`;
+    let attempt = 0;
+    let succeeded = false;
+    let hitRateLimit = false;
+    while (attempt < MAX_RETRIES && !succeeded) {
+      attempt++;
       try {
         const res = await fetch(url, { headers: { Authorization: TRAIL_API_KEY } });
+        if (res.status === 429) {
+          hitRateLimit = true;
+          const retryAfter = parseRetryAfter(res);
+          const body = await res.text().catch(() => '');
+          const bodyRetry = parseBodyRetrySeconds(body);
+          const sleepSec = (retryAfter ?? bodyRetry ?? 30) + 2;
+          console.warn(`[trail-sync]   kiwisavers 429 (attempt ${attempt}/${MAX_RETRIES}); sleeping ${sleepSec}s before retry`);
+          await sleep(sleepSec * 1000);
+          continue;
+        }
+        if (res.status === 404) {
+          await sql`
+            INSERT INTO trail_kiwisavers (profile_id, data, synced_at)
+            VALUES (${id}, '[]'::jsonb, NOW())
+            ON CONFLICT (profile_id) DO UPDATE
+              SET data = EXCLUDED.data, synced_at = NOW()
+          `;
+          written++;
+          succeeded = true;
+          break;
+        }
         if (!res.ok) {
-          if (res.status === 404) {
-            await sql`
-              INSERT INTO trail_kiwisavers (profile_id, data, synced_at)
-              VALUES (${id}, '[]'::jsonb, NOW())
-              ON CONFLICT (profile_id) DO UPDATE
-                SET data = EXCLUDED.data, synced_at = NOW()
-            `;
-            written++;
-            continue;
-          }
-          // Don't fatal — log and skip. The next sync will retry.
           const body = await res.text().catch(() => '');
           console.warn(`[trail-sync]   kiwisavers ${res.status} for profile ${id}: ${body.slice(0, 120)}`);
-          continue;
+          break; // not retrying non-429 failures — next sync run gets another shot
         }
         const body = await res.json();
         const envelope = body?.data ?? body;
@@ -256,13 +279,44 @@ async function syncKiwiSaverRecords(profileIds: string[]): Promise<number> {
             SET data = EXCLUDED.data, synced_at = NOW()
         `;
         written++;
+        succeeded = true;
       } catch (err: any) {
         console.warn(`[trail-sync]   kiwisavers fetch threw for profile ${id}: ${err.message ?? err}`);
+        break;
       }
     }
+    if (succeeded && hitRateLimit) rateLimitedThenRecovered++;
+    if (!succeeded && hitRateLimit) {
+      console.warn(`[trail-sync]   kiwisavers gave up on ${id} after ${MAX_RETRIES} attempts`);
+    }
+    await sleep(REQUEST_INTERVAL_MS);
   }
-  await Promise.all(Array.from({ length: CONCURRENCY }, () => worker()));
+
+  if (rateLimitedThenRecovered > 0) {
+    console.log(`[trail-sync]   kiwisavers ${rateLimitedThenRecovered} profile(s) recovered after a 429 retry`);
+  }
   return written;
+}
+
+/** Returns the Retry-After header value in seconds, or null if not present. */
+function parseRetryAfter(res: Response): number | null {
+  const h = res.headers.get('retry-after');
+  if (!h) return null;
+  const n = parseInt(h, 10);
+  return Number.isFinite(n) ? n : null;
+}
+
+/**
+ * Trail's 429 body looks like: `{ "statusCode": 429, "message": "Rate limit is
+ * exceeded. Try again in 32 seconds." }`. Extract the integer if present.
+ */
+function parseBodyRetrySeconds(body: string): number | null {
+  const m = /Try again in (\d+) seconds/i.exec(body);
+  return m ? parseInt(m[1], 10) : null;
+}
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((r) => setTimeout(r, ms));
 }
 
 async function upsertProfiles(profiles: any[]) {
