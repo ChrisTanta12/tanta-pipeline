@@ -51,7 +51,7 @@
 // --------------------------------------------------------------------------
 // Configuration
 
-var SUBJECT_PREFIX = '[Tanta TAT Check]';
+var SUBJECT_PREFIX = '[Tanta Turn Around Times]';
 
 // Banks + categories covered by this workflow.
 // Extend if we ever add another portal-gated source.
@@ -87,7 +87,7 @@ function sendTatCheckRequest() {
 
   var today = new Date();
   var dateStr = Utilities.formatDate(today, 'Pacific/Auckland', 'd MMM yyyy');
-  var subject = SUBJECT_PREFIX + ' Weekly TAT Check — ' + dateStr;
+  var subject = SUBJECT_PREFIX + ' Weekly check — ' + dateStr;
 
   // Include last-seen values so the staffer knows what was there last week
   // and can leave anything unchanged as-is.
@@ -116,6 +116,14 @@ function processTatReplies() {
   var threads = GmailApp.search(query, 0, 20);
   Logger.log('found ' + threads.length + ' candidate thread(s)');
 
+  // Track replies that came in but parsed to zero categories — used for the
+  // failure-alert email. A reply with no recognised category lines is usually
+  // either "all clear, no changes" (expected, harmless) OR a format slip-up
+  // where Gen forgot the section header (we want to know about that).
+  // We can't distinguish those two cases programmatically, so we alert on
+  // any non-empty-but-zero-categories reply and let the human decide.
+  var unparseable = [];
+
   threads.forEach(function (thread) {
     thread.getMessages().forEach(function (msg) {
       var fromSelf = msg.getFrom().indexOf(Session.getActiveUser().getEmail()) >= 0;
@@ -126,9 +134,15 @@ function processTatReplies() {
 
       Logger.log('processing reply ' + mid + ' from ' + msg.getFrom());
       var body = msg.getPlainBody();
+      var bodyChars = body ? body.trim().length : 0;
 
       var parsed = parseReply(body);
       Logger.log('parsed: ' + JSON.stringify(parsed));
+
+      var totalCategoriesParsed = 0;
+      Object.keys(parsed).forEach(function (b) {
+        totalCategoriesParsed += Object.keys(parsed[b] || {}).length;
+      });
 
       // POST one payload per bank so each gets its own ingestion_log row.
       Object.keys(parsed).forEach(function (bankId) {
@@ -160,9 +174,47 @@ function processTatReplies() {
         Logger.log('[' + bankId + '] status=' + res.status + ' body=' + res.body.slice(0, 200));
       });
 
+      // A reply that had real content but yielded zero categories — likely a
+      // format slip-up worth flagging. Empty/whitespace-only replies are
+      // common (e.g. "thanks!" autoresponders) and aren't worth alerting on.
+      if (totalCategoriesParsed === 0 && bodyChars > 40) {
+        unparseable.push({
+          from: msg.getFrom(),
+          subject: msg.getSubject(),
+          date: msg.getDate().toISOString(),
+          bodyPreview: body.slice(0, 300),
+        });
+      }
+
       props.setProperty('tat_processed_' + mid, '1');
     });
   });
+
+  // Surface format mishaps as a Gmail to Chris so they don't sit silently.
+  if (unparseable.length > 0) {
+    try {
+      var subject = '[Tanta Pipeline] ' + unparseable.length +
+        ' Turn Around Times reply' + (unparseable.length === 1 ? '' : 'ies') + ' could not be parsed';
+      var alertLines = [
+        'The Turn Around Times reply processor received replies it could not parse.',
+        'Most likely cause: the reply was missing the "=== ANZ ===" / "=== Kiwibank ===" section header,',
+        'or the category names did not match the canonical list.',
+        '',
+      ];
+      unparseable.forEach(function (u, i) {
+        alertLines.push('--- Reply ' + (i + 1) + ' ---');
+        alertLines.push('From: ' + u.from);
+        alertLines.push('Subject: ' + u.subject);
+        alertLines.push('Sent: ' + u.date);
+        alertLines.push('Body preview:');
+        alertLines.push(u.bodyPreview);
+        alertLines.push('');
+      });
+      MailApp.sendEmail('chris@tanta.co.nz', subject, alertLines.join('\n'));
+    } catch (mailErr) {
+      Logger.log('alert email failed: ' + mailErr.message);
+    }
+  }
 }
 
 // --------------------------------------------------------------------------
@@ -172,13 +224,19 @@ function buildEmailBody(staffFirst, dateStr, previous) {
   var lines = [];
   lines.push('Hi ' + staffFirst + ',');
   lines.push('');
-  lines.push('Weekly TAT check for the portal-gated banks. Please log into each portal,');
-  lines.push('note the current turnaround days, and REPLY to this email with the values filled in.');
+  lines.push('Weekly Turn Around Times check for the adviser hub banks.');
   lines.push('');
-  lines.push('Rules of thumb:');
-  lines.push('• Numbers only — business days (e.g. "4")');
-  lines.push('• Leave a line with "__" if the portal doesn\'t show that category or nothing has changed');
-  lines.push('• Reply to the thread (don\'t start a new email) — the system finds your reply by matching the subject prefix');
+  lines.push('The dashboard currently shows the values below. Please log into each adviser hub');
+  lines.push('and confirm the numbers still match. If anything has changed, reply with only the');
+  lines.push('updated lines — no need to reply if everything is the same.');
+  lines.push('');
+  lines.push('How to reply (only if something has changed):');
+  lines.push('Use a section header and the category name with a plain number. Example:');
+  lines.push('');
+  lines.push('  === ANZ ===');
+  lines.push('  Priority Assessment – Retail: 3');
+  lines.push('');
+  lines.push('Include only the categories that need updating.');
   lines.push('');
   lines.push('Date of check: ' + dateStr);
   lines.push('');
@@ -186,12 +244,16 @@ function buildEmailBody(staffFirst, dateStr, previous) {
   Object.keys(TAT_BANKS).forEach(function (bankId) {
     var cfg = TAT_BANKS[bankId];
     lines.push('=== ' + cfg.label + ' ===');
-    lines.push('(source: ' + cfg.portalNote + ')');
+    lines.push('Source: ' + cfg.portalNote);
     cfg.categories.forEach(function (cat) {
       var prev = previous && previous[bankId] && previous[bankId][cat];
-      var suffix = prev !== undefined ? '  [last week: ' + prev + ']' : '';
-      lines.push(cat + ': __' + suffix);
+      // Read out the current dashboard value. "—" placeholder when we have
+      // no value on file (first run, or a newly-added category).
+      var current = prev !== undefined ? (prev + ' days') : '—';
+      lines.push(cat + ': ' + current);
     });
+    lines.push('');
+    lines.push('Are these still what the adviser hub shows? If yes — no action needed.');
     lines.push('');
   });
 

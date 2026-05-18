@@ -195,6 +195,16 @@ function processBank(bankId, labelName, geminiKey, vercelUrl, ingestSecret) {
     }
 
     var patch = parsed.patch || {};
+
+    // ANZ turn around times are sourced from the auth-gated adviser hub
+    // (radar.ac.nz) via the TatCheck workflow, not from emails. Gemini
+    // occasionally pulls a stray turnaround number out of newsletters
+    // ("our current response time is 1 day") that pollutes the proper
+    // portal-derived values. Drop it before posting.
+    if (bankId === 'anz' && patch.turnaround) {
+      delete patch.turnaround;
+    }
+
     var hasData = Object.keys(patch).length > 0;
     var status = parsed.error ? 'failed' : (hasData ? 'success' : 'needs_review');
     var needsReview = !hasData || parsed.confidence === 'low';
