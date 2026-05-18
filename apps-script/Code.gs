@@ -234,6 +234,24 @@ function processBank(bankId, labelName, geminiKey, vercelUrl, ingestSecret) {
 }
 
 // --------------------------------------------------------------------------
+// Empty-branch detection — recursively treats {x:null,y:null} as "no data"
+// so Gemini's shape-filled-but-value-empty responses don't clobber existing
+// good rows via shallow JSONB merge.
+
+function isEmptyBranch(v) {
+  if (v === null || v === undefined || v === '') return true;
+  if (typeof v === 'number' || typeof v === 'boolean') return false;
+  if (typeof v === 'string') return false;  // non-empty string handled above
+  if (Array.isArray(v)) return v.length === 0 || v.every(isEmptyBranch);
+  if (typeof v === 'object') {
+    var keys = Object.keys(v);
+    if (keys.length === 0) return true;
+    return keys.every(function (k) { return isEmptyBranch(v[k]); });
+  }
+  return false;
+}
+
+// --------------------------------------------------------------------------
 // External image fetcher (for emails like BNZ where rate cards are <img src> URLs)
 
 function collectExternalImages(msg) {
@@ -385,11 +403,18 @@ function callGemini(apiKey, bankId, emailSubject, bodyText, mediaParts) {
   delete parsed._confidence;
   delete parsed._notes;
 
-  // Drop empty sub-objects (e.g. rateCard: {}) so a partial Gemini extraction
+  // Drop sub-objects that contain no actual data so a partial Gemini extraction
   // can't overwrite existing good data on shallow JSONB merge in Vercel.
+  //
+  // Catches both:
+  //   rateCard: {}                                  — totally absent
+  //   rateCard: {1y:{lte80:null,gt80:null}, ...}    — shape-filled but value-empty
+  //
+  // Gemini sometimes returns the second form on emails that aren't rate cards
+  // (e.g. "BNZ update for advisers" newsletters), which would null-out the
+  // existing rateCard entirely without this filter.
   Object.keys(parsed).forEach(function (k) {
-    var v = parsed[k];
-    if (v && typeof v === 'object' && !Array.isArray(v) && Object.keys(v).length === 0) {
+    if (isEmptyBranch(parsed[k])) {
       delete parsed[k];
     }
   });
