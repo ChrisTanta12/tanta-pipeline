@@ -45,8 +45,8 @@ var BANK_LABELS = [
 ];
 
 var MAX_MESSAGES_PER_LABEL = 3;
-var LOOKBACK_DAYS = 2;
-var GEMINI_MODEL = 'gemini-2.0-flash';
+var LOOKBACK_DAYS = 7;
+var GEMINI_MODEL = 'gemini-2.5-flash';
 
 // --------------------------------------------------------------------------
 // Main entry point (bound to daily trigger)
@@ -86,6 +86,23 @@ function run() {
     summary.failed + ' failed · ' +
     summary.skipped + ' skipped',
   );
+
+  // Alert on any failure so silent breakages (model deprecation, auth, parser regressions)
+  // surface immediately as a Gmail instead of waiting to be noticed on the dashboard.
+  if (summary.failed > 0) {
+    try {
+      var subject = '[Tanta Pipeline] Rates sync had ' + summary.failed + ' failure(s)';
+      var body = 'tanta-pipeline rates sync at ' + new Date().toISOString() + '\n\n' +
+        'Summary: ' + summary.ok + ' ok | ' + summary.review + ' needs review | ' +
+        summary.failed + ' failed | ' + summary.skipped + ' skipped\n' +
+        'Elapsed: ' + elapsed + 's\n\n' +
+        'Apps Script Executions log:\n' +
+        'https://script.google.com/home/projects/' + ScriptApp.getScriptId() + '/executions';
+      MailApp.sendEmail('chris@tanta.co.nz', subject, body);
+    } catch (mailErr) {
+      Logger.log('alert email failed: ' + mailErr.message);
+    }
+  }
 }
 
 // --------------------------------------------------------------------------
@@ -147,8 +164,13 @@ function processBank(bankId, labelName, geminiKey, vercelUrl, ingestSecret) {
       }
     });
 
+    // Some banks (notably BNZ) embed rate cards as <img src="https://..."> in the email HTML
+    // rather than as inline attachments — getAttachments() misses these. Fetch them explicitly.
+    var externalImages = collectExternalImages(msg);
+    externalImages.forEach(function (p) { mediaParts.push(p); });
+
     Logger.log('[' + bankId + ']   ' + mid.slice(0, 10) + '… "' +
-      subject.slice(0, 60) + '" (' + mediaParts.length + ' media parts)');
+      subject.slice(0, 60) + '" (' + mediaParts.length + ' media parts; ' + externalImages.length + ' external)');
 
     var parsed;
     try {
@@ -173,6 +195,16 @@ function processBank(bankId, labelName, geminiKey, vercelUrl, ingestSecret) {
     }
 
     var patch = parsed.patch || {};
+
+    // ANZ turn around times are sourced from the auth-gated adviser hub
+    // (radar.ac.nz) via the TatCheck workflow, not from emails. Gemini
+    // occasionally pulls a stray turnaround number out of newsletters
+    // ("our current response time is 1 day") that pollutes the proper
+    // portal-derived values. Drop it before posting.
+    if (bankId === 'anz' && patch.turnaround) {
+      delete patch.turnaround;
+    }
+
     var hasData = Object.keys(patch).length > 0;
     var status = parsed.error ? 'failed' : (hasData ? 'success' : 'needs_review');
     var needsReview = !hasData || parsed.confidence === 'low';
@@ -209,6 +241,83 @@ function processBank(bankId, labelName, geminiKey, vercelUrl, ingestSecret) {
   });
 
   return stats;
+}
+
+// --------------------------------------------------------------------------
+// Empty-branch detection — recursively treats {x:null,y:null} as "no data"
+// so Gemini's shape-filled-but-value-empty responses don't clobber existing
+// good rows via shallow JSONB merge.
+
+function isEmptyBranch(v) {
+  if (v === null || v === undefined || v === '') return true;
+  if (typeof v === 'number' || typeof v === 'boolean') return false;
+  if (typeof v === 'string') return false;  // non-empty string handled above
+  if (Array.isArray(v)) return v.length === 0 || v.every(isEmptyBranch);
+  if (typeof v === 'object') {
+    var keys = Object.keys(v);
+    if (keys.length === 0) return true;
+    return keys.every(function (k) { return isEmptyBranch(v[k]); });
+  }
+  return false;
+}
+
+// --------------------------------------------------------------------------
+// External image fetcher (for emails like BNZ where rate cards are <img src> URLs)
+
+function collectExternalImages(msg) {
+  var html;
+  try { html = msg.getBody() || ''; } catch (e) { return []; }
+  if (!html) return [];
+
+  // Extract candidate URLs from <img src=...> tags
+  var urls = [];
+  var imgRe = /<img[^>]+src\s*=\s*["']([^"']+)["']/gi;
+  var match;
+  while ((match = imgRe.exec(html)) !== null) {
+    var url = match[1];
+    if (!url) continue;
+    if (url.indexOf('cid:') === 0 || url.indexOf('data:') === 0) continue;  // inline already handled
+    if (url.indexOf('http') !== 0) continue;
+    urls.push(url);
+  }
+  if (urls.length === 0) return [];
+
+  // Dedupe
+  var seen = {};
+  urls = urls.filter(function (u) { if (seen[u]) return false; seen[u] = true; return true; });
+
+  // Fetch each, keep only real image MIME and skip tiny (tracking pixels / icons).
+  // Cap at 6 candidates and 5MB each to bound runtime + Gemini token cost.
+  var MIN_BYTES = 5 * 1024;        // 5KB — filters tracking pixels, social icons, logos
+  var MAX_BYTES = 5 * 1024 * 1024; // 5MB
+  var MAX_CANDIDATES = 6;
+  var fetched = [];
+  for (var i = 0; i < urls.length && fetched.length < MAX_CANDIDATES; i++) {
+    try {
+      var resp = UrlFetchApp.fetch(urls[i], { muteHttpExceptions: true, followRedirects: true });
+      if (resp.getResponseCode() !== 200) continue;
+      var blob = resp.getBlob();
+      var bytes = blob.getBytes();
+      if (bytes.length < MIN_BYTES || bytes.length > MAX_BYTES) continue;
+      var mime = (blob.getContentType() || '').split(';')[0].trim();
+      if (!/^image\/(png|jpe?g|gif|webp)$/i.test(mime)) continue;
+      fetched.push({
+        inline_data: {
+          mime_type: mime,
+          data: Utilities.base64Encode(bytes),
+        },
+        _size: bytes.length,
+      });
+    } catch (err) {
+      // skip this URL
+    }
+  }
+
+  // Keep the largest 3 (rate card is typically the biggest image; logos/banners smaller)
+  fetched.sort(function (a, b) { return b._size - a._size; });
+  fetched = fetched.slice(0, 3);
+  fetched.forEach(function (p) { delete p._size; });
+  return fetched;
 }
 
 // --------------------------------------------------------------------------
@@ -303,6 +412,22 @@ function callGemini(apiKey, bankId, emailSubject, bodyText, mediaParts) {
   var notes = parsed._notes || null;
   delete parsed._confidence;
   delete parsed._notes;
+
+  // Drop sub-objects that contain no actual data so a partial Gemini extraction
+  // can't overwrite existing good data on shallow JSONB merge in Vercel.
+  //
+  // Catches both:
+  //   rateCard: {}                                  — totally absent
+  //   rateCard: {1y:{lte80:null,gt80:null}, ...}    — shape-filled but value-empty
+  //
+  // Gemini sometimes returns the second form on emails that aren't rate cards
+  // (e.g. "BNZ update for advisers" newsletters), which would null-out the
+  // existing rateCard entirely without this filter.
+  Object.keys(parsed).forEach(function (k) {
+    if (isEmptyBranch(parsed[k])) {
+      delete parsed[k];
+    }
+  });
 
   return { patch: parsed, confidence: confidence, notes: notes, error: null };
 }

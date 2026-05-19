@@ -154,6 +154,33 @@ export async function upsertBank(id: BankId, name: string, data: BankData): Prom
 }
 
 /**
+ * Recursively treats a value as "empty" when it carries no actual data —
+ * null/undefined/empty-string leaves, or any nested object/array where every
+ * leaf is empty by the same rule.
+ *
+ * Defense against partial Gemini extractions that return the right SHAPE
+ * with null values (e.g. `rateCard: { '1y': { lte80: null, gt80: null }, ... }`
+ * on emails that aren't rate cards). Without this, the shallow JSONB merge
+ * in mergeBankData would overwrite a populated rateCard with a hollow one.
+ *
+ * Used by mergeBankData to strip hollow branches from any incoming patch
+ * before the merge. Mirrors `isEmptyBranch` in apps-script/Code.gs so the
+ * filter applies regardless of which side regresses.
+ */
+function isEmptyBranch(v: unknown): boolean {
+  if (v === null || v === undefined || v === '') return true;
+  if (typeof v === 'number' || typeof v === 'boolean') return false;
+  if (typeof v === 'string') return false; // non-empty string handled above
+  if (Array.isArray(v)) return v.length === 0 || v.every(isEmptyBranch);
+  if (typeof v === 'object') {
+    const keys = Object.keys(v as Record<string, unknown>);
+    if (keys.length === 0) return true;
+    return keys.every(k => isEmptyBranch((v as Record<string, unknown>)[k]));
+  }
+  return false;
+}
+
+/**
  * Detects the legacy `{ retail, business }` turnaround shape that existing
  * parsers (app/lib/parsers/asb.ts, bnz.ts) and the vision prompt in
  * anthropic.ts still produce. Converts it to the new TurnaroundMap with
@@ -228,13 +255,30 @@ function mergeTurnaroundMaps(existing: TurnaroundMap | undefined, incoming: Turn
 }
 
 export async function mergeBankData(id: BankId, patch: Partial<BankData> & { turnaround?: unknown }): Promise<BankData> {
+  // Defense in depth: strip top-level keys whose value is "hollow" (recursively
+  // null/empty). Apps Script ALSO does this before POSTing, but we double-up
+  // here so a future ingest caller that doesn't filter can't clobber good data.
+  // Critically, do NOT strip lastSourceEmail / lastSourceUrl / similar metadata
+  // — those keys live alongside the data branches and we always want to update
+  // them. We only filter the bank-data branches: rateCard, turnaround,
+  // cashback, fees, trafficLights, lep, productFeatures, etc.
+  const FILTERABLE_BRANCHES = [
+    'rateCard', 'turnaround', 'cashback', 'fees', 'trafficLights', 'lep',
+    'productFeatures', 'commission', 'lowEquityUmi', 'boarderIncome',
+  ] as const;
+  const patchInput: Record<string, unknown> = { ...patch };
+  for (const k of FILTERABLE_BRANCHES) {
+    if (k in patchInput && isEmptyBranch(patchInput[k])) {
+      delete patchInput[k];
+    }
+  }
   // Shim the legacy turnaround shape at the db-write layer so existing
   // parsers/vision prompts keep working without rewrites. Merge per-key
   // against the existing map so manual overrides survive auto ingests.
-  const patchToWrite: Record<string, unknown> = { ...patch };
-  if (patch.turnaround !== undefined) {
+  const patchToWrite: Record<string, unknown> = { ...patchInput };
+  if (patchInput.turnaround !== undefined) {
     const now = new Date().toISOString();
-    const incoming = normalizeTurnaroundPatch(patch.turnaround, now);
+    const incoming = normalizeTurnaroundPatch(patchInput.turnaround, now);
     if (incoming) {
       const { rows } = await sql<{ data: BankData }>`
         SELECT data FROM banks WHERE id = ${id}
