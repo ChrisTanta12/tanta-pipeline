@@ -211,6 +211,28 @@ export default function LendersPage() {
 
   const lastRefresh = useMemo(() => fetchedAt ? fmtDate(fetchedAt) : '—', [fetchedAt]);
 
+  /**
+   * Banks whose top-level data.updatedAt is more than 4 days old.
+   * Surfaces as a non-blocking banner above the bank cards so a stalled
+   * ingest pipeline becomes visible without burying the table.
+   * Threshold: 4 days = comfortably outside the daily cron's normal cadence,
+   * tight enough to catch a problem before rates drift more than a week.
+   */
+  const staleBanks = useMemo(() => {
+    const now = Date.now();
+    const FOUR_DAYS_MS = 4 * 86_400_000;
+    return banks
+      .map(b => {
+        if (!b.updatedAt) return null;
+        const t = new Date(b.updatedAt).getTime();
+        if (!Number.isFinite(t)) return null;
+        const ageMs = now - t;
+        if (ageMs < FOUR_DAYS_MS) return null;
+        return { id: b.id, name: b.name, ageDays: Math.floor(ageMs / 86_400_000) };
+      })
+      .filter((x): x is { id: BankId; name: string; ageDays: number } => x !== null);
+  }, [banks]);
+
   if (loading && banks.length === 0) {
     return (
       <div className="min-h-screen flex items-center justify-center" style={{ backgroundColor: '#f7f9fe' }}>
@@ -293,6 +315,31 @@ export default function LendersPage() {
           {error && (
             <div className="mb-6 p-4 bg-[#ffdad6] text-[#93000a] rounded-xl text-sm">
               <strong>Error:</strong> {error}
+            </div>
+          )}
+
+          {staleBanks.length > 0 && (
+            <div
+              className="mb-6 p-4 rounded-xl flex items-start gap-3 text-sm"
+              style={{
+                backgroundColor: staleBanks.some(b => b.ageDays >= 7) ? '#ffdad6' : '#fff4d2',
+                color: staleBanks.some(b => b.ageDays >= 7) ? '#93000a' : '#5b3d00',
+                border: `1px solid ${staleBanks.some(b => b.ageDays >= 7) ? '#ffb4ab' : '#f1d68a'}`,
+              }}
+              role="status"
+            >
+              <span className="material-symbols-outlined text-base leading-none mt-0.5">warning</span>
+              <div>
+                <strong>Stale rate data</strong> — the daily Gmail&nbsp;→&nbsp;Gemini ingest may have stalled. Check the
+                Apps Script Executions log if this persists.
+                <ul className="mt-1 list-disc list-inside opacity-90">
+                  {staleBanks.map(b => (
+                    <li key={b.id}>
+                      {b.name}: last update {b.ageDays} day{b.ageDays === 1 ? '' : 's'} ago
+                    </li>
+                  ))}
+                </ul>
+              </div>
             </div>
           )}
 
